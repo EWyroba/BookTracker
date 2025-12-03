@@ -8,9 +8,7 @@ interface NavLinkProps {
     $isActive: boolean;
 }
 
-interface DropdownMenuProps {
-    $isOpen: boolean;
-}
+// Usuń interfejs DropdownMenuProps, ponieważ nie będzie już potrzebny
 
 const HeaderContainer = styled.header`
   background: ${props => props.theme.colors.surface};
@@ -63,6 +61,11 @@ const NavLink = styled(Link)<NavLinkProps>`
 
 const UserMenu = styled.div`
   position: relative;
+
+  /* Rozwijanie menu po hover */
+  &:hover > div {
+    display: block;
+  }
 `;
 
 const UserButton = styled.button`
@@ -82,7 +85,7 @@ const UserButton = styled.button`
   }
 `;
 
-const DropdownMenu = styled.div<DropdownMenuProps>`
+const DropdownMenu = styled.div`
   position: absolute;
   top: 100%;
   right: 0;
@@ -91,8 +94,9 @@ const DropdownMenu = styled.div<DropdownMenuProps>`
   border-radius: ${props => props.theme.borderRadius.md};
   padding: ${props => props.theme.spacing.sm};
   min-width: 200px;
-  display: ${props => props.$isOpen ? 'block' : 'none'};
+  display: none; /* Domyślnie ukryte */
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1001; /* Wyżej niż header */
 `;
 
 const DropdownItem = styled.button`
@@ -115,50 +119,71 @@ const DropdownItem = styled.button`
 `;
 
 const Header: React.FC = () => {
-    const { user, logout } = useAuth();
+    const { user, logout, loading } = useAuth();
     const location = useLocation();
-    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    // Usuwamy stan isDropdownOpen, ponieważ teraz sterujemy przez hover
 
-    const navItems: Array<{ path: string; icon: IconName; label: string }> = [
+    // Linki które mają być widoczne TYLKO dla zalogowanych
+    const protectedNavItems: Array<{ path: string; icon: IconName; label: string }> = [
         { path: '/', icon: 'FiHome', label: 'Strona główna' },
         { path: '/books', icon: 'FiBook', label: 'Książki' },
         { path: '/search', icon: 'FiSearch', label: 'Szukaj' },
         { path: '/stats', icon: 'FiBarChart2', label: 'Statystyki' }
     ];
 
+    // Jeśli jeszcze ładuje, pokaż pusty header
+    if (loading) {
+        return (
+            <HeaderContainer>
+                <div className="container">
+                    <Nav>
+                        <Logo to="/">
+                            <Icon name="FiBook" />
+                            BookTracker
+                        </Logo>
+                        <div style={{ color: '#666' }}>Ładowanie...</div>
+                    </Nav>
+                </div>
+            </HeaderContainer>
+        );
+    }
+
     return (
         <HeaderContainer>
             <div className="container">
                 <Nav>
-                    <Logo to="/">
+                    <Logo to={user ? '/' : '/login'}>
                         <Icon name="FiBook" />
                         BookTracker
                     </Logo>
 
-                    <NavLinks>
-                        {navItems.map(item => (
-                            <NavLink
-                                key={item.path}
-                                to={item.path}
-                                $isActive={location.pathname === item.path}
-                            >
-                                <Icon name={item.icon} />
-                                <span>{item.label}</span>
-                            </NavLink>
-                        ))}
-                    </NavLinks>
+                    {/* Linki tylko dla zalogowanych */}
+                    {user && (
+                        <NavLinks>
+                            {protectedNavItems.map(item => (
+                                <NavLink
+                                    key={item.path}
+                                    to={item.path}
+                                    $isActive={location.pathname === item.path}
+                                >
+                                    <Icon name={item.icon} />
+                                    <span>{item.label}</span>
+                                </NavLink>
+                            ))}
+                        </NavLinks>
+                    )}
 
-                    {/* DODAJ WARUNEK - pokazuj menu tylko gdy użytkownik jest zalogowany */}
+                    {/* Menu użytkownika */}
                     {user ? (
                         <UserMenu>
-                            <UserButton onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
+                            <UserButton>
                                 <Icon name="FiUser" />
                                 <span>{user?.nazwa_wyswietlana || user?.nazwa_uzytkownika}</span>
                                 <Icon name="FiChevronDown" />
                             </UserButton>
 
-                            <DropdownMenu $isOpen={isDropdownOpen}>
-                                <DropdownItem>
+                            <DropdownMenu>
+                                <DropdownItem as={Link} to="/profile">
                                     <Icon name="FiUser" />
                                     Mój profil
                                 </DropdownItem>
@@ -169,8 +194,8 @@ const Header: React.FC = () => {
                             </DropdownMenu>
                         </UserMenu>
                     ) : (
-                        // Pokaż przyciski logowania/rejestracji gdy użytkownik nie jest zalogowany
-                        <div style={{ display: 'flex', gap: '1rem' }}>
+                        // Jeśli NIE zalogowany, pokaż przyciski logowania/rejestracji
+                        <NavLinks>
                             <NavLink to="/login" $isActive={location.pathname === '/login'}>
                                 <Icon name="FiLogIn" />
                                 <span>Zaloguj</span>
@@ -179,7 +204,7 @@ const Header: React.FC = () => {
                                 <Icon name="FiUserPlus" />
                                 <span>Zarejestruj</span>
                             </NavLink>
-                        </div>
+                        </NavLinks>
                     )}
                 </Nav>
             </div>

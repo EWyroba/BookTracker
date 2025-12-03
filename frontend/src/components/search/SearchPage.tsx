@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import styled from 'styled-components';
-import { booksAPI } from '../../services/api';
+import api from '../../services/api';
 import Icon from '../common/Icon';
 
 const SearchContainer = styled.div`
@@ -83,14 +83,6 @@ const ResultsCount = styled.div`
   font-size: 0.9rem;
 `;
 
-const SortSelect = styled.select`
-  background: ${props => props.theme.colors.surface};
-  border: 1px solid ${props => props.theme.colors.border};
-  border-radius: ${props => props.theme.borderRadius.md};
-  color: ${props => props.theme.colors.text};
-  padding: ${props => props.theme.spacing.sm} ${props => props.theme.spacing.md};
-`;
-
 const BooksGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -142,7 +134,7 @@ const BookDescription = styled.p`
   line-height: 1.4;
   margin-bottom: ${props => props.theme.spacing.md};
   display: -webkit-box;
-  -webkit-line-amp: 3;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 `;
@@ -154,6 +146,12 @@ const BookMeta = styled.div`
   margin-bottom: ${props => props.theme.spacing.md};
   font-size: 0.8rem;
   color: ${props => props.theme.colors.textSecondary};
+`;
+
+const ActionButtons = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: ${props => props.theme.spacing.sm};
 `;
 
 const AddButton = styled.button<{ $added?: boolean }>`
@@ -169,6 +167,30 @@ const AddButton = styled.button<{ $added?: boolean }>`
 
   &:hover:not(:disabled) {
     background: ${props => props.$added ? props.theme.colors.success : props.theme.colors.primaryDark};
+    filter: brightness(0.9);
+    transform: translateY(-1px);
+  }
+
+  &:disabled {
+    background: ${props => props.theme.colors.textMuted};
+    cursor: not-allowed;
+  }
+`;
+
+const RemoveButton = styled.button`
+  width: 100%;
+  padding: ${props => props.theme.spacing.sm};
+  background: ${props => props.theme.colors.error};
+  color: white;
+  border: none;
+  border-radius: ${props => props.theme.borderRadius.md};
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: ${props => props.theme.colors.error};
+    filter: brightness(0.9);
     transform: translateY(-1px);
   }
 
@@ -247,22 +269,52 @@ const SuggestionTag = styled.button`
   }
 `;
 
+const InLibraryBadge = styled.div`
+  background: ${props => props.theme.colors.success};
+  color: white;
+  padding: ${props => props.theme.spacing.xs} ${props => props.theme.spacing.sm};
+  border-radius: ${props => props.theme.borderRadius.sm};
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: ${props => props.theme.spacing.sm};
+`;
+
+const ProcessingBadge = styled.div`
+  background: ${props => props.theme.colors.warning};
+  color: white;
+  padding: ${props => props.theme.spacing.xs} ${props => props.theme.spacing.sm};
+  border-radius: ${props => props.theme.borderRadius.sm};
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: ${props => props.theme.spacing.sm};
+  animation: pulse 1.5s infinite;
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+`;
+
 interface SearchResult {
-    googleBooksId: string;
+    source: 'google' | 'local';
+    googleBooksId?: string;
     existingBookId: number | null;
+    isInUserLibrary: boolean;
     tytul: string;
     autorzy: string[];
     isbn: string;
     opis: string;
     liczba_stron: number | null;
     data_wydania: string;
-    wydawnictwo: string;
+    wydawnictwo?: string;
     gatunek: string;
     jezyk: string;
     url_okladki: string;
-    previewLink: string;
-    rating: number | null;
-    ratingsCount: number;
+    previewLink?: string;
+    rating?: number | null;
+    ratingsCount?: number;
 }
 
 const SearchPage: React.FC = () => {
@@ -271,8 +323,8 @@ const SearchPage: React.FC = () => {
     const [results, setResults] = useState<SearchResult[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [addingBook, setAddingBook] = useState<string | null>(null);
-    const [addedBooks, setAddedBooks] = useState<Set<string>>(new Set());
+    const [addingBooks, setAddingBooks] = useState<Set<string>>(new Set());
+    const [removingBook, setRemovingBook] = useState<string | null>(null);
     const [totalResults, setTotalResults] = useState(0);
     const [currentPage, setCurrentPage] = useState(0);
     const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -283,8 +335,10 @@ const SearchPage: React.FC = () => {
     useEffect(() => {
         const fetchSuggestions = async () => {
             try {
-                const response = await booksAPI.get('/search/suggestions');
-                setSuggestions(response.data.suggestions);
+                const response = await api.get('/search/suggestions');
+                if (response.data.success) {
+                    setSuggestions(response.data.suggestions);
+                }
             } catch (err) {
                 console.error('Error fetching suggestions:', err);
             }
@@ -303,28 +357,44 @@ const SearchPage: React.FC = () => {
         setError('');
 
         try {
-            const response = await booksAPI.get('/search', {
+            console.log('🔍 Sending search request for:', searchQuery);
+
+            const response = await api.get('/search', {
                 params: {
                     q: searchQuery,
                     maxResults: RESULTS_PER_PAGE,
                     startIndex: page * RESULTS_PER_PAGE
-                }
+                },
+                timeout: 15000
             });
 
-            setResults(response.data.books || []);
-            setTotalResults(response.data.totalResults || 0);
-            setCurrentPage(page);
+            console.log('📦 Search response:', response.data);
 
-            // POPRAWIONE: Oznacz książki które już są w bibliotece
-            const existingBooksArray: string[] = (response.data.books || [])
-                .filter((book: SearchResult) => book.existingBookId !== null)
-                .map((book: SearchResult) => book.googleBooksId);
-
-            setAddedBooks(new Set(existingBooksArray));
+            if (response.data.success) {
+                setResults(response.data.books || []);
+                setTotalResults(response.data.totalResults || 0);
+                setCurrentPage(page);
+            } else {
+                setError(response.data.message || 'Wystąpił błąd podczas wyszukiwania');
+                setResults([]);
+            }
 
         } catch (err: any) {
-            console.error('Search error:', err);
-            setError(err.response?.data?.message || 'Wystąpił błąd podczas wyszukiwania');
+            console.error('💥 Search error details:', err);
+
+            let errorMessage = 'Wystąpił błąd podczas wyszukiwania';
+
+            if (err.code === 'ECONNABORTED') {
+                errorMessage = 'Przekroczono czas oczekiwania. Spróbuj ponownie.';
+            } else if (err.response?.data) {
+                errorMessage = err.response.data.message || err.response.data.error;
+            } else if (err.request) {
+                errorMessage = 'Problem z połączeniem. Sprawdź internet.';
+            } else {
+                errorMessage = err.message;
+            }
+
+            setError(errorMessage);
             setResults([]);
         } finally {
             setLoading(false);
@@ -354,17 +424,146 @@ const SearchPage: React.FC = () => {
         performSearch(suggestion);
     };
 
-    const handleAddBook = async (googleBooksId: string) => {
-        setAddingBook(googleBooksId);
+    const handleAddBook = async (book: SearchResult) => {
+        console.log('📖 Book data for adding:', {
+            source: book.source,
+            googleBooksId: book.googleBooksId,
+            existingBookId: book.existingBookId,
+            isInUserLibrary: book.isInUserLibrary,
+            title: book.tytul
+        });
+
+        // Jeśli książka jest już w bibliotece użytkownika
+        if (book.isInUserLibrary) {
+            alert('✅ Ta książka jest już w Twojej bibliotece');
+            return;
+        }
+
+        // Dla wszystkich książek używamy tego samego endpointu
+        const bookKey = book.googleBooksId || `local-${book.existingBookId}`;
+
+        // Dodaj książkę do listy przetwarzanych
+        setAddingBooks(prev => new Set(prev).add(bookKey));
+
         try {
-            await booksAPI.post('/search/quick-add', { googleBooksId });
-            // POPRAWIONE: Aktualizacja Set z poprawnym typem
-            setAddedBooks(prev => new Set([...Array.from(prev), googleBooksId]));
+            console.log(`🔄 Adding book to library and database:`, {
+                title: book.tytul,
+                source: book.source,
+                googleBooksId: book.googleBooksId,
+                existingBookId: book.existingBookId
+            });
+
+            // Wysyłamy dane książki do backendu
+            const response = await api.post('/search/add-book', {
+                // Dane książki
+                title: book.tytul,
+                authors: book.autorzy,
+                isbn: book.isbn,
+                description: book.opis,
+                pageCount: book.liczba_stron,
+                publishedDate: book.data_wydania,
+                publisher: book.wydawnictwo,
+                genre: book.gatunek,
+                language: book.jezyk,
+                coverUrl: book.url_okladki,
+                // Identyfikatory
+                googleBooksId: book.googleBooksId,
+                existingBookId: book.existingBookId
+            }, {
+                timeout: 15000
+            });
+
+            console.log('📨 Add book response:', response.data);
+
+            if (response.data.success) {
+                // Aktualizuj wyniki wyszukiwania
+                setResults(prev => prev.map(b => {
+                    if ((b.googleBooksId === book.googleBooksId) ||
+                        (b.existingBookId === book.existingBookId)) {
+                        return {
+                            ...b,
+                            isInUserLibrary: true,
+                            existingBookId: response.data.bookId || b.existingBookId,
+                            source: 'local' // Teraz jest w lokalnej bazie
+                        };
+                    }
+                    return b;
+                }));
+
+                alert('✅ ' + response.data.message);
+            } else {
+                alert('❌ ' + (response.data.message || 'Nie udało się dodać książki'));
+            }
         } catch (err: any) {
-            console.error('Error adding book:', err);
-            alert(err.response?.data?.message || 'Wystąpił błąd podczas dodawania książki');
+            console.error('💥 Add book error:', err);
+
+            let errorMessage = 'Nie udało się dodać książki. Spróbuj ponownie.';
+
+            if (err.response?.data) {
+                errorMessage = err.response.data.message || err.response.data.error;
+            } else if (err.request) {
+                errorMessage = 'Problem z połączeniem. Sprawdź internet.';
+            } else {
+                errorMessage = err.message;
+            }
+
+            alert('❌ ' + errorMessage);
         } finally {
-            setAddingBook(null);
+            // Usuń książkę z listy przetwarzanych
+            setAddingBooks(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(bookKey);
+                return newSet;
+            });
+        }
+    };
+
+    const handleRemoveFromLibrary = async (book: SearchResult) => {
+        if (!book.existingBookId) {
+            alert('❌ Nie można usunąć książki bez ID z bazy danych');
+            return;
+        }
+
+        setRemovingBook(book.googleBooksId || null);
+
+        try {
+            console.log('🗑️ Removing book from library:', {
+                bookId: book.existingBookId,
+                title: book.tytul
+            });
+
+            const response = await api.delete(`/search/books/${book.existingBookId}/remove-from-library`);
+
+            console.log('📨 Remove response:', response.data);
+
+            if (response.data.success) {
+                // Odśwież wyniki wyszukiwania
+                setResults(prev => prev.map(b =>
+                    b.existingBookId === book.existingBookId
+                        ? { ...b, isInUserLibrary: false }
+                        : b
+                ));
+
+                alert('✅ ' + response.data.message);
+            } else {
+                alert('❌ ' + (response.data.message || 'Nie udało się usunąć książki'));
+            }
+        } catch (err: any) {
+            console.error('💥 Remove book error:', err);
+
+            let errorMessage = 'Nie udało się usunąć książki. Spróbuj ponownie.';
+
+            if (err.response?.data) {
+                errorMessage = err.response.data.message || err.response.data.error;
+            } else if (err.request) {
+                errorMessage = 'Problem z połączeniem. Sprawdź internet.';
+            } else {
+                errorMessage = err.message;
+            }
+
+            alert('❌ ' + errorMessage);
+        } finally {
+            setRemovingBook(null);
         }
     };
 
@@ -373,6 +572,10 @@ const SearchPage: React.FC = () => {
     };
 
     const totalPages = Math.ceil(totalResults / RESULTS_PER_PAGE);
+    const isAddingBook = (book: SearchResult) => {
+        const bookKey = book.googleBooksId || `local-${book.existingBookId}`;
+        return addingBooks.has(bookKey);
+    };
 
     return (
         <SearchContainer>
@@ -443,50 +646,80 @@ const SearchPage: React.FC = () => {
                         <ResultsInfo>
                             <ResultsCount>
                                 Znaleziono {totalResults} książek dla "{query}"
+                                {results.some(book => book.source === 'local') && ' (w tym książki z Twojej biblioteki)'}
                             </ResultsCount>
                         </ResultsInfo>
 
                         <BooksGrid>
-                            {results.map((book) => (
-                                <BookCard key={book.googleBooksId}>
-                                    <BookCover
-                                        src={book.url_okladki || 'https://via.placeholder.com/300x400/1a1a1a/666666?text=Brak+okładki'}
-                                        alt={book.tytul}
-                                    />
+                            {results.map((book) => {
+                                const bookKey = book.googleBooksId || `local-${book.existingBookId}`;
+                                const isBeingAdded = isAddingBook(book);
 
-                                    <BookTitle>{book.tytul}</BookTitle>
+                                return (
+                                    <BookCard key={bookKey}>
+                                        {book.isInUserLibrary ? (
+                                            <InLibraryBadge>✓ W Twojej bibliotece</InLibraryBadge>
+                                        ) : isBeingAdded ? (
+                                            <ProcessingBadge>Dodawanie...</ProcessingBadge>
+                                        ) : null}
 
-                                    <BookAuthors>
-                                        {book.autorzy.length > 0
-                                            ? book.autorzy.join(', ')
-                                            : 'Autor nieznany'
-                                        }
-                                    </BookAuthors>
+                                        <BookCover
+                                            src={book.url_okladki || 'https://via.placeholder.com/300x400/1a1a1a/666666?text=Brak+okładki'}
+                                            alt={book.tytul}
+                                            onError={(e) => {
+                                                e.currentTarget.src = 'https://via.placeholder.com/300x400/1a1a1a/666666?text=Brak+okładki';
+                                            }}
+                                        />
 
-                                    <BookDescription>{book.opis}</BookDescription>
+                                        <BookTitle>{book.tytul}</BookTitle>
 
-                                    <BookMeta>
-                    <span>
-                      {book.liczba_stron ? `${book.liczba_stron} str.` : 'Brak danych'}
-                    </span>
-                                        <span>{book.data_wydania}</span>
-                                    </BookMeta>
+                                        <BookAuthors>
+                                            {book.autorzy && book.autorzy.length > 0
+                                                ? book.autorzy.join(', ')
+                                                : 'Autor nieznany'
+                                            }
+                                        </BookAuthors>
 
-                                    <AddButton
-                                        onClick={() => handleAddBook(book.googleBooksId)}
-                                        disabled={addingBook === book.googleBooksId || addedBooks.has(book.googleBooksId)}
-                                        $added={addedBooks.has(book.googleBooksId)}
-                                    >
-                                        {addingBook === book.googleBooksId ? (
-                                            <>Dodawanie...</>
-                                        ) : addedBooks.has(book.googleBooksId) ? (
-                                            <>✓ W bibliotece</>
-                                        ) : (
-                                            <>+ Dodaj do biblioteki</>
-                                        )}
-                                    </AddButton>
-                                </BookCard>
-                            ))}
+                                        <BookDescription>{book.opis}</BookDescription>
+
+                                        <BookMeta>
+                                            <span>
+                                                {book.liczba_stron ? `${book.liczba_stron} str.` : 'Brak danych'}
+                                            </span>
+                                            <span>{book.data_wydania}</span>
+                                            {book.source === 'local' && (
+                                                <span style={{ color: '#4caf50', fontSize: '0.7rem' }}>
+                                                    📚 Lokalna
+                                                </span>
+                                            )}
+                                        </BookMeta>
+
+                                        <ActionButtons>
+                                            {book.isInUserLibrary ? (
+                                                <RemoveButton
+                                                    onClick={() => handleRemoveFromLibrary(book)}
+                                                    disabled={removingBook === (book.googleBooksId || null)}
+                                                >
+                                                    {removingBook === (book.googleBooksId || null) ? 'Usuwanie...' : 'Usuń z biblioteki'}
+                                                </RemoveButton>
+                                            ) : (
+                                                <AddButton
+                                                    onClick={() => handleAddBook(book)}
+                                                    disabled={isBeingAdded || book.isInUserLibrary}
+                                                    $added={book.isInUserLibrary}
+                                                >
+                                                    {isBeingAdded
+                                                        ? 'Dodawanie...'
+                                                        : book.isInUserLibrary
+                                                            ? '✓ W bibliotece'
+                                                            : '+ Dodaj do biblioteki'
+                                                    }
+                                                </AddButton>
+                                            )}
+                                        </ActionButtons>
+                                    </BookCard>
+                                );
+                            })}
                         </BooksGrid>
 
                         {totalPages > 1 && (
@@ -498,7 +731,6 @@ const SearchPage: React.FC = () => {
                                     ‹ Poprzednia
                                 </PageButton>
 
-                                {/* POPRAWIONE: Paginacja bez problemów z iteracją */}
                                 {Array.from({ length: Math.min(5, totalPages) }, (_, index) => {
                                     const page = index;
                                     return (

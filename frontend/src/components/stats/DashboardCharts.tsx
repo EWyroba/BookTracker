@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { booksAPI } from '../../services/api';
+import api from '../../services/api';
 
 const ChartsContainer = styled.div`
   display: grid;
@@ -118,7 +118,7 @@ const DashboardCharts: React.FC<DashboardChartsProps> = ({ onDataUpdate }) => {
 
     const fetchChartData = async () => {
         try {
-            const response = await booksAPI.get(`/stats/dashboard?period=${timeFilter}`);
+            const response = await api.get(`/stats/dashboard?period=${timeFilter}`);
             const { genres, readingTimeline } = response.data;
 
             setGenres(genres || []);

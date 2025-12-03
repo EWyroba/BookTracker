@@ -16,7 +16,6 @@ const dbConfig = {
 const pool = mysql.createPool(dbConfig);
 const promisePool = pool.promise();
 
-// Eksportuj dla kompatybilności
 module.exports = {
     pool: pool,
     promisePool: promisePool,

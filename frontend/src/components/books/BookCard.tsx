@@ -1,9 +1,10 @@
+
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
 import Icon from '../common/Icon';
 import { Book } from '../../types';
-import { booksAPI } from '../../services/api';
+import api from '../../services/api';
 
 interface ProgressFillProps {
     $progress: number;
@@ -168,13 +169,35 @@ const StatusButton = styled.button<StatusButtonProps>`
   }
 `;
 
+const RemoveButton = styled.button`
+  width: 100%;
+  padding: ${props => props.theme.spacing.xs};
+  background: ${props => props.theme.colors.error};
+  color: white;
+  border: none;
+  border-radius: ${props => props.theme.borderRadius.sm};
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: ${props => props.theme.spacing.sm};
+
+
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
 interface BookCardProps {
     book: Book;
     onStatusChange: () => void;
+    onRemoveFromLibrary?: () => void;
 }
 
-const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange }) => {
+const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange, onRemoveFromLibrary }) => {
     const [updating, setUpdating] = useState(false);
+    const [removing, setRemoving] = useState(false);
     const progress = book.aktualna_strona && book.liczba_stron
         ? Math.round((book.aktualna_strona / book.liczba_stron) * 100)
         : 0;
@@ -182,7 +205,7 @@ const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange }) => {
     const handleStatusChange = async (newStatus: string) => {
         setUpdating(true);
         try {
-            await booksAPI.post(`/books/${book.id}/status`, {
+            await api.post(`/books/${book.id}/status`, {
                 status: newStatus,
                 aktualna_strona: book.aktualna_strona || 0
             });
@@ -194,7 +217,25 @@ const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange }) => {
         }
     };
 
-    // Funkcja do formatowania autorów
+    const handleRemoveFromLibrary = async () => {
+        if (!window.confirm('Czy na pewno chcesz usunąć tę książkę z biblioteki?')) {
+            return;
+        }
+
+        setRemoving(true);
+        try {
+            await api.delete(`/books/${book.id}/remove-from-library`);
+            if (onRemoveFromLibrary) {
+                onRemoveFromLibrary();
+            }
+        } catch (error) {
+            console.error('Error removing book from library:', error);
+            alert('Błąd podczas usuwania książki z biblioteki');
+        } finally {
+            setRemoving(false);
+        }
+    };
+
     const formatAuthors = (autorzy: string[] | string | undefined): string => {
         if (!autorzy) return 'Autor nieznany';
 
@@ -229,7 +270,6 @@ const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange }) => {
                     <Link to={`/books/${book.id}`}>{book.tytul}</Link>
                 </BookTitle>
 
-                {/* POPRAWIONE: Używamy funkcji formatAuthors */}
                 <BookAuthor>{formatAuthors(book.autorzy)}</BookAuthor>
 
                 <BookMeta>
@@ -271,6 +311,15 @@ const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange }) => {
                         Przeczytana
                     </StatusButton>
                 </StatusButtons>
+
+                {onRemoveFromLibrary && (
+                    <RemoveButton
+                        onClick={handleRemoveFromLibrary}
+                        disabled={removing}
+                    >
+                        {removing ? 'Usuwanie...' : 'Usuń z biblioteki'}
+                    </RemoveButton>
+                )}
             </BookInfo>
 
             {(book.status === 'aktualnie_czytam' && progress > 0) && (

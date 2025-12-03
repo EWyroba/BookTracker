@@ -2,7 +2,7 @@ import styled from 'styled-components';
 import { Link } from 'react-router-dom';
 import Icon from '../common/Icon';
 import React, { useState, useEffect } from 'react'; // DODAJ useEffect
-import { booksAPI } from '../../services/api';
+import api from '../../services/api';
 import BookCard from '../books/BookCard'; // DODAJ import BookCard
 
 interface ProgressFillProps {
@@ -182,11 +182,11 @@ const Dashboard: React.FC = () => {
             setLoading(true);
 
             // Pobierz statystyki
-            const statsResponse = await booksAPI.get('/stats/dashboard');
+            const statsResponse = await api.get('/stats/dashboard');
             const statsData = statsResponse.data;
 
             // Pobierz książki
-            const booksResponse = await booksAPI.get('/books');
+            const booksResponse = await api.get('/books');
             const allBooks = booksResponse.data.books;
 
             // Aktualizuj statystyki

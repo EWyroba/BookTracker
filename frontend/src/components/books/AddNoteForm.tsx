@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { booksAPI } from '../../services/api';
+import api from '../../services/api';
 import Icon from '../common/Icon';
 
 const FormOverlay = styled.div`
@@ -64,6 +64,11 @@ const Input = styled.input`
     border-color: ${props => props.theme.colors.primary};
     outline: none;
   }
+
+  &:disabled {
+    background: ${props => props.theme.colors.border}; /* Szare tło dla disabled */
+    opacity: 0.7;
+  }
 `;
 
 const TextArea = styled.textarea`
@@ -80,6 +85,11 @@ const TextArea = styled.textarea`
   &:focus {
     border-color: ${props => props.theme.colors.primary};
     outline: none;
+  }
+
+  &:disabled {
+    background: ${props => props.theme.colors.border}; /* Szare tło dla disabled */
+    opacity: 0.7;
   }
 `;
 
@@ -179,7 +189,7 @@ const EditNoteForm: React.FC<EditNoteFormProps> = ({ noteId, bookTitle, onCancel
     useEffect(() => {
         const fetchNote = async () => {
             try {
-                const response = await booksAPI.get(`/books/notes/single/${noteId}`);
+                const response = await api.get(`/books/notes/single/${noteId}`);
                 const note = response.data.note;
 
                 setFormData({
@@ -220,7 +230,7 @@ const EditNoteForm: React.FC<EditNoteFormProps> = ({ noteId, bookTitle, onCancel
         setError('');
 
         try {
-            await booksAPI.put(`/books/notes/${noteId}`, {
+            await api.put(`/books/notes/${noteId}`, {
                 ...formData,
                 numer_strony: parseInt(formData.numer_strony)
             });

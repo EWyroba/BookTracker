@@ -31,6 +31,24 @@ export type IconName =
     | 'FiRotateCcw'
     | 'FiLogIn'
     | 'FiUserPlus'
+    | 'FiImage'
+    | 'FiTarget'
+    | 'FiCalendar'
+    | 'FiRefreshCw'
+    | 'FiUserX'
+    | 'FiUserCheck'
+    | 'FiCheckCircle'
+    | 'FiAlertCircle'
+
+
+
+
+
+
+
+
+
+
 
 interface IconProps {
     name: IconName;

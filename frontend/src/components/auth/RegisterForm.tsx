@@ -1,15 +1,13 @@
-import React, { useState } from 'react';
+// src/components/auth/RegisterForm.tsx
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAuth } from '../../contexts/AuthContext';
 import Icon from '../common/Icon';
+import api from '../../services/api';
 
 interface SubmitButtonProps {
     $loading?: boolean;
-}
-
-interface PasswordStrengthProps {
-    $strength: number;
 }
 
 const RegisterContainer = styled.div`
@@ -27,7 +25,7 @@ const RegisterCard = styled.div`
   border-radius: ${props => props.theme.borderRadius.lg};
   padding: ${props => props.theme.spacing.xxl};
   width: 100%;
-  max-width: 450px;
+  max-width: 500px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 `;
 
@@ -56,16 +54,6 @@ const Form = styled.form`
   display: flex;
   flex-direction: column;
   gap: ${props => props.theme.spacing.lg};
-`;
-
-const FormRow = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: ${props => props.theme.spacing.lg};
-
-  @media (max-width: ${props => props.theme.breakpoints.mobile}) {
-    grid-template-columns: 1fr;
-  }
 `;
 
 const FormGroup = styled.div`
@@ -131,25 +119,6 @@ const PasswordToggle = styled.button`
   }
 `;
 
-const PasswordStrength = styled.div<PasswordStrengthProps>`
-  height: 4px;
-  background: ${props => {
-    if (props.$strength === 0) return props.theme.colors.border;
-    if (props.$strength === 1) return props.theme.colors.error;
-    if (props.$strength === 2) return props.theme.colors.warning;
-    return props.theme.colors.success;
-  }};
-  border-radius: 2px;
-  margin-top: ${props => props.theme.spacing.xs};
-  transition: all 0.3s ease;
-`;
-
-const PasswordHint = styled.div`
-  font-size: 0.8rem;
-  color: ${props => props.theme.colors.textSecondary};
-  margin-top: ${props => props.theme.spacing.xs};
-`;
-
 const SubmitButton = styled.button<SubmitButtonProps>`
   background: ${props => props.$loading ? props.theme.colors.textMuted : props.theme.colors.primary};
   color: white;
@@ -162,7 +131,6 @@ const SubmitButton = styled.button<SubmitButtonProps>`
   align-items: center;
   justify-content: center;
   gap: ${props => props.theme.spacing.sm};
-  margin-top: ${props => props.theme.spacing.md};
   border: none;
   cursor: pointer;
 
@@ -187,11 +155,37 @@ const ErrorMessage = styled.div`
   text-align: center;
 `;
 
+const SuccessMessage = styled.div`
+  background: ${props => props.theme.colors.success}20;
+  border: 1px solid ${props => props.theme.colors.success};
+  color: ${props => props.theme.colors.success};
+  padding: ${props => props.theme.spacing.md};
+  border-radius: ${props => props.theme.borderRadius.md};
+  font-size: 0.9rem;
+  text-align: center;
+`;
+
+const Divider = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${props => props.theme.spacing.md};
+  color: ${props => props.theme.colors.textSecondary};
+  font-size: 0.8rem;
+  margin: ${props => props.theme.spacing.lg} 0;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: ${props => props.theme.colors.border};
+  }
+`;
+
 const LoginLink = styled.div`
   text-align: center;
   color: ${props => props.theme.colors.textSecondary};
   font-size: 0.9rem;
-  margin-top: ${props => props.theme.spacing.lg};
 
   a {
     color: ${props => props.theme.colors.primary};
@@ -219,6 +213,25 @@ const LoadingSpinner = styled.div`
   }
 `;
 
+const PasswordRequirements = styled.div`
+  font-size: 0.8rem;
+  color: ${props => props.theme.colors.textMuted};
+  margin-top: ${props => props.theme.spacing.xs};
+
+  ul {
+    margin: 0;
+    padding-left: 1.2rem;
+  }
+
+  li.valid {
+    color: ${props => props.theme.colors.success};
+  }
+
+  li.invalid {
+    color: ${props => props.theme.colors.error};
+  }
+`;
+
 const RegisterForm: React.FC = () => {
     const [formData, setFormData] = useState({
         nazwa_uzytkownika: '',
@@ -231,9 +244,18 @@ const RegisterForm: React.FC = () => {
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
-    const { register } = useAuth();
+    const { register, isAuthenticated, loading: authLoading } = useAuth();
     const navigate = useNavigate();
+
+    // Sprawdź czy już jesteśmy zalogowani
+    useEffect(() => {
+        if (!authLoading && isAuthenticated) {
+            console.log('Already authenticated, redirecting to dashboard...');
+            navigate('/dashboard', { replace: true });
+        }
+    }, [isAuthenticated, authLoading, navigate]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData(prev => ({
@@ -243,58 +265,77 @@ const RegisterForm: React.FC = () => {
         setError('');
     };
 
-    const getPasswordStrength = (password: string): number => {
-        if (password.length === 0) return 0;
-        if (password.length < 6) return 1;
-        if (password.length < 8) return 2;
-        if (/[A-Z]/.test(password) && /[0-9]/.test(password) && /[^A-Za-z0-9]/.test(password)) return 4;
-        if (/[A-Z]/.test(password) || /[0-9]/.test(password)) return 3;
-        return 2;
-    };
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
 
-    const validateForm = (): boolean => {
+        // Walidacja
         if (!formData.nazwa_uzytkownika || !formData.email || !formData.password || !formData.confirmPassword) {
             setError('Wypełnij wszystkie wymagane pola');
-            return false;
+            return;
         }
 
         if (formData.password !== formData.confirmPassword) {
             setError('Hasła nie są identyczne');
-            return false;
+            return;
         }
 
         if (formData.password.length < 6) {
             setError('Hasło musi mieć co najmniej 6 znaków');
-            return false;
+            return;
         }
 
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        if (!/\S+@\S+\.\S+/.test(formData.email)) {
             setError('Podaj poprawny adres email');
-            return false;
+            return;
         }
-
-        return true;
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        if (!validateForm()) return;
 
         setLoading(true);
         setError('');
+        setSuccess('');
 
         try {
-            await register(formData);
-            navigate('/');
+            // Wyślij żądanie rejestracji do API
+            const response = await api.post('/auth/register', {
+                nazwa_uzytkownika: formData.nazwa_uzytkownika,
+                email: formData.email,
+                password: formData.password,
+                nazwa_wyswietlana: formData.nazwa_wyswietlana || formData.nazwa_uzytkownika
+            });
+
+            const { token, user } = response.data;
+
+            console.log('Registration API response received:', { token, user });
+
+            // Użyj funkcji register z AuthContext
+            await register(token, user);
+
+            setSuccess('Rejestracja udana! Przekierowuję...');
+
+            // Przekieruj po 1.5 sekundy
+            setTimeout(() => {
+                navigate('/dashboard');
+            }, 1500);
+
         } catch (err: any) {
-            setError(err.response?.data?.message || 'Wystąpił błąd podczas rejestracji');
+            console.error('Registration error:', err);
+
+            let errorMessage = 'Wystąpił błąd podczas rejestracji';
+
+            if (err.response) {
+                if (err.response.status === 400) {
+                    errorMessage = err.response.data.message || 'Użytkownik już istnieje';
+                } else if (err.response.status === 500) {
+                    errorMessage = 'Błąd serwera. Spróbuj ponownie później.';
+                }
+            } else if (err.request) {
+                errorMessage = 'Brak odpowiedzi z serwera. Sprawdź połączenie.';
+            }
+
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
     };
-
-    const passwordStrength = getPasswordStrength(formData.password);
 
     return (
         <RegisterContainer>
@@ -304,50 +345,31 @@ const RegisterForm: React.FC = () => {
                         <Icon name="FiBook" />
                         BookTracker
                     </h1>
-                    <p>Dołącz do społeczności czytelników</p>
+                    <p>Zarejestruj nowe konto</p>
                 </Logo>
 
                 <Form onSubmit={handleSubmit}>
                     {error && <ErrorMessage>{error}</ErrorMessage>}
+                    {success && <SuccessMessage>{success}</SuccessMessage>}
 
-                    <FormRow>
-                        <FormGroup>
-                            <Label htmlFor="nazwa_uzytkownika">Nazwa użytkownika *</Label>
-                            <InputWrapper>
-                                <InputIcon>
-                                    <Icon name="FiUser" />
-                                </InputIcon>
-                                <Input
-                                    type="text"
-                                    id="nazwa_uzytkownika"
-                                    name="nazwa_uzytkownika"
-                                    placeholder="jankowalski"
-                                    value={formData.nazwa_uzytkownika}
-                                    onChange={handleChange}
-                                    disabled={loading}
-                                    required
-                                />
-                            </InputWrapper>
-                        </FormGroup>
-
-                        <FormGroup>
-                            <Label htmlFor="nazwa_wyswietlana">Wyświetlana nazwa</Label>
-                            <InputWrapper>
-                                <InputIcon>
-                                    <Icon name="FiUser" />
-                                </InputIcon>
-                                <Input
-                                    type="text"
-                                    id="nazwa_wyswietlana"
-                                    name="nazwa_wyswietlana"
-                                    placeholder="Jan Kowalski"
-                                    value={formData.nazwa_wyswietlana}
-                                    onChange={handleChange}
-                                    disabled={loading}
-                                />
-                            </InputWrapper>
-                        </FormGroup>
-                    </FormRow>
+                    <FormGroup>
+                        <Label htmlFor="nazwa_uzytkownika">Nazwa użytkownika *</Label>
+                        <InputWrapper>
+                            <InputIcon>
+                                <Icon name="FiUser" />
+                            </InputIcon>
+                            <Input
+                                type="text"
+                                id="nazwa_uzytkownika"
+                                name="nazwa_uzytkownika"
+                                placeholder="jankowalski"
+                                value={formData.nazwa_uzytkownika}
+                                onChange={handleChange}
+                                disabled={loading || authLoading}
+                                required
+                            />
+                        </InputWrapper>
+                    </FormGroup>
 
                     <FormGroup>
                         <Label htmlFor="email">Email *</Label>
@@ -362,10 +384,31 @@ const RegisterForm: React.FC = () => {
                                 placeholder="wpisz@email.com"
                                 value={formData.email}
                                 onChange={handleChange}
-                                disabled={loading}
+                                disabled={loading || authLoading}
                                 required
                             />
                         </InputWrapper>
+                    </FormGroup>
+
+                    <FormGroup>
+                        <Label htmlFor="nazwa_wyswietlana">Nazwa wyświetlana</Label>
+                        <InputWrapper>
+                            <InputIcon>
+                                <Icon name="FiUserCheck" />
+                            </InputIcon>
+                            <Input
+                                type="text"
+                                id="nazwa_wyswietlana"
+                                name="nazwa_wyswietlana"
+                                placeholder="Jan Kowalski (opcjonalnie)"
+                                value={formData.nazwa_wyswietlana}
+                                onChange={handleChange}
+                                disabled={loading || authLoading}
+                            />
+                        </InputWrapper>
+                        <div style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>
+                            Jeśli nie podasz, użyjemy nazwy użytkownika
+                        </div>
                     </FormGroup>
 
                     <FormGroup>
@@ -381,29 +424,17 @@ const RegisterForm: React.FC = () => {
                                 placeholder="Minimum 6 znaków"
                                 value={formData.password}
                                 onChange={handleChange}
-                                disabled={loading}
+                                disabled={loading || authLoading}
                                 required
                             />
                             <PasswordToggle
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                disabled={loading}
+                                disabled={loading || authLoading}
                             >
                                 <Icon name={showPassword ? 'FiEyeOff' : 'FiEye'} />
                             </PasswordToggle>
                         </InputWrapper>
-                        <PasswordStrength $strength={passwordStrength} />
-                        <PasswordHint>
-                            {formData.password && (
-                                <>
-                                    Siła hasła:
-                                    {passwordStrength === 1 && ' Słabe'}
-                                    {passwordStrength === 2 && ' Średnie'}
-                                    {passwordStrength === 3 && ' Dobre'}
-                                    {passwordStrength === 4 && ' Bardzo dobre'}
-                                </>
-                            )}
-                        </PasswordHint>
                     </FormGroup>
 
                     <FormGroup>
@@ -419,30 +450,48 @@ const RegisterForm: React.FC = () => {
                                 placeholder="Powtórz hasło"
                                 value={formData.confirmPassword}
                                 onChange={handleChange}
-                                disabled={loading}
+                                disabled={loading || authLoading}
                                 required
                             />
                             <PasswordToggle
                                 type="button"
                                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                disabled={loading}
+                                disabled={loading || authLoading}
                             >
                                 <Icon name={showConfirmPassword ? 'FiEyeOff' : 'FiEye'} />
                             </PasswordToggle>
                         </InputWrapper>
                     </FormGroup>
 
-                    <SubmitButton type="submit" $loading={loading} disabled={loading}>
-                        {loading ? (
+                    <PasswordRequirements>
+                        <strong>Wymagania hasła:</strong>
+                        <ul>
+                            <li className={formData.password.length >= 6 ? 'valid' : 'invalid'}>
+                                Co najmniej 6 znaków
+                            </li>
+                            <li className={formData.password === formData.confirmPassword && formData.confirmPassword !== '' ? 'valid' : 'invalid'}>
+                                Hasła muszą być identyczne
+                            </li>
+                        </ul>
+                    </PasswordRequirements>
+
+                    <SubmitButton
+                        type="submit"
+                        $loading={loading || authLoading}
+                        disabled={loading || authLoading}
+                    >
+                        {(loading || authLoading) ? (
                             <>
                                 <LoadingSpinner />
-                                Rejestracja...
+                                {authLoading ? 'Sprawdzanie...' : 'Rejestracja...'}
                             </>
                         ) : (
                             'Zarejestruj się'
                         )}
                     </SubmitButton>
                 </Form>
+
+                <Divider>lub</Divider>
 
                 <LoginLink>
                     Masz już konto?

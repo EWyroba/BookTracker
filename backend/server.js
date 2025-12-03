@@ -10,6 +10,9 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Routes
+app.use('/api/auth', require('./routes/auth'));
 app.use('/api/books', require('./routes/books'));
 app.use('/api/search', require('./routes/search'));
 app.use('/api/stats', require('./routes/stats'));
@@ -48,9 +51,6 @@ app.get('/api/test-db', async (req, res) => {
         });
     }
 });
-
-// Existing routes
-app.use('/api/auth', require('./routes/auth'));
 
 // Health check
 app.get('/api/health', (req, res) => {

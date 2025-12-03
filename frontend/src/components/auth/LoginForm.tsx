@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+// src/components/auth/LoginForm.tsx
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { useAuth } from '../../contexts/AuthContext';
 import Icon from '../common/Icon';
+import api from '../../services/api';
 
 interface SubmitButtonProps {
     $loading?: boolean;
@@ -209,9 +211,28 @@ const LoginForm: React.FC = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
 
-    const { login } = useAuth();
+    const { login, isAuthenticated, loading: authLoading } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
+
+    interface LocationState {
+        from?: {
+            pathname: string;
+        };
+        message?: string;
+    }
+
+    // Sprawdź czy już jesteśmy zalogowani
+    useEffect(() => {
+        if (!authLoading && isAuthenticated && !autoLoginAttempted) {
+            console.log('Already authenticated, redirecting...');
+            const state = location.state as LocationState;
+            const from = state?.from?.pathname || '/dashboard';
+            navigate(from, { replace: true });
+        }
+    }, [isAuthenticated, authLoading, navigate, location, autoLoginAttempted]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData(prev => ({
@@ -231,16 +252,56 @@ const LoginForm: React.FC = () => {
 
         setLoading(true);
         setError('');
+        setAutoLoginAttempted(true);
 
         try {
-            await login(formData.email, formData.password);
-            navigate('/');
+            // Najpierw wyślij żądanie logowania do API
+            const response = await api.post('/auth/login', {
+                email: formData.email,
+                password: formData.password
+            });
+
+            // Pobierz token i dane użytkownika z odpowiedzi
+            const { token, user } = response.data;
+
+            console.log('Login API response received:', { token, user });
+
+            // Teraz wywołaj funkcję login z AuthContext
+            await login(token, user);
+
+            // Po udanym logowaniu, przekieruj na poprzednią stronę lub dashboard
+            const state = location.state as LocationState;
+            const from = state?.from?.pathname || '/dashboard';
+
+            console.log('Redirecting to:', from);
+            navigate(from, { replace: true });
+
         } catch (err: any) {
-            setError(err.response?.data?.message || 'Wystąpił błąd podczas logowania');
+            console.error('Login error:', err);
+
+            let errorMessage = 'Wystąpił błąd podczas logowania';
+
+            if (err.response) {
+                if (err.response.status === 400) {
+                    errorMessage = err.response.data.message || 'Nieprawidłowy email lub hasło';
+                } else if (err.response.status === 401) {
+                    errorMessage = 'Nieprawidłowe dane logowania';
+                } else if (err.response.status === 500) {
+                    errorMessage = 'Błąd serwera. Spróbuj ponownie później.';
+                }
+            } else if (err.request) {
+                errorMessage = 'Brak odpowiedzi z serwera. Sprawdź połączenie.';
+            }
+
+            setError(errorMessage);
         } finally {
             setLoading(false);
         }
     };
+
+    // Pokaż wiadomość z przekierowania
+    const state = location.state as LocationState;
+    const redirectMessage = state?.message;
 
     return (
         <LoginContainer>
@@ -252,6 +313,19 @@ const LoginForm: React.FC = () => {
                     </h1>
                     <p>Zaloguj się do swojego konta</p>
                 </Logo>
+
+                {redirectMessage && (
+                    <div style={{
+                        backgroundColor: '#4CAF50',
+                        color: 'white',
+                        padding: '10px',
+                        borderRadius: '4px',
+                        marginBottom: '20px',
+                        textAlign: 'center'
+                    }}>
+                        {redirectMessage}
+                    </div>
+                )}
 
                 <Form onSubmit={handleSubmit}>
                     {error && <ErrorMessage>{error}</ErrorMessage>}
@@ -269,7 +343,7 @@ const LoginForm: React.FC = () => {
                                 placeholder="wpisz@email.com"
                                 value={formData.email}
                                 onChange={handleChange}
-                                disabled={loading}
+                                disabled={loading || authLoading}
                                 required
                             />
                         </InputWrapper>
@@ -288,24 +362,28 @@ const LoginForm: React.FC = () => {
                                 placeholder="Twoje hasło"
                                 value={formData.password}
                                 onChange={handleChange}
-                                disabled={loading}
+                                disabled={loading || authLoading}
                                 required
                             />
                             <PasswordToggle
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                disabled={loading}
+                                disabled={loading || authLoading}
                             >
                                 <Icon name={showPassword ? 'FiEyeOff' : 'FiEye'} />
                             </PasswordToggle>
                         </InputWrapper>
                     </FormGroup>
 
-                    <SubmitButton type="submit" $loading={loading} disabled={loading}>
-                        {loading ? (
+                    <SubmitButton
+                        type="submit"
+                        $loading={loading || authLoading}
+                        disabled={loading || authLoading}
+                    >
+                        {(loading || authLoading) ? (
                             <>
                                 <LoadingSpinner />
-                                Logowanie...
+                                {authLoading ? 'Sprawdzanie...' : 'Logowanie...'}
                             </>
                         ) : (
                             'Zaloguj się'

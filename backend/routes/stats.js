@@ -1,5 +1,5 @@
 const express = require('express');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/authMiddleware');
 const db = require('../config/database');
 const router = express.Router();
 
@@ -7,44 +7,44 @@ const router = express.Router();
 router.get('/dashboard', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { period = 'year' } = req.query; // month, year, all_time
+        const { period = 'year' } = req.query;
 
         // Podstawowe statystyki
         const [readBooks] = await db.promisePool.execute(
-            `SELECT COUNT(*) as count 
-             FROM statusy_czytania 
+            `SELECT COUNT(*) as count
+             FROM statusy_czytania
              WHERE uzytkownik_id = ? AND status = 'przeczytana'`,
             [userId]
         );
 
         const [readingBooks] = await db.promisePool.execute(
-            `SELECT COUNT(*) as count 
-             FROM statusy_czytania 
+            `SELECT COUNT(*) as count
+             FROM statusy_czytania
              WHERE uzytkownik_id = ? AND status = 'aktualnie_czytam'`,
             [userId]
         );
 
         const [totalPages] = await db.promisePool.execute(
-            `SELECT SUM(k.liczba_stron) as total 
-             FROM statusy_czytania s 
-             JOIN ksiazki k ON s.ksiazka_id = k.id 
+            `SELECT SUM(k.liczba_stron) as total
+             FROM statusy_czytania s
+                      JOIN ksiazki k ON s.ksiazka_id = k.id
              WHERE s.uzytkownik_id = ? AND s.status = 'przeczytana'`,
             [userId]
         );
 
         // Statystyki gatunków
         const [genres] = await db.promisePool.execute(
-            `SELECT k.gatunek, COUNT(*) as count 
-             FROM statusy_czytania s 
-             JOIN ksiazki k ON s.ksiazka_id = k.id 
+            `SELECT k.gatunek, COUNT(*) as count
+             FROM statusy_czytania s
+                 JOIN ksiazki k ON s.ksiazka_id = k.id
              WHERE s.uzytkownik_id = ? AND s.status = 'przeczytana' AND k.gatunek IS NOT NULL
-             GROUP BY k.gatunek 
-             ORDER BY count DESC 
-             LIMIT 10`,
+             GROUP BY k.gatunek
+             ORDER BY count DESC
+                 LIMIT 10`,
             [userId]
         );
 
-        // Czytanie w czasie (dla wykresu)
+        // Czytanie w czasie
         let dateCondition = '';
         if (period === 'month') {
             dateCondition = 'AND s.data_zakonczenia >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)';
@@ -53,16 +53,16 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
         }
 
         const [readingTimeline] = await db.promisePool.execute(
-            `SELECT 
-                DATE_FORMAT(s.data_zakonczenia, '%Y-%m') as period,
-                COUNT(*) as books_read,
-                SUM(k.liczba_stron) as pages_read
-             FROM statusy_czytania s 
-             JOIN ksiazki k ON s.ksiazka_id = k.id 
-             WHERE s.uzytkownik_id = ? 
-               AND s.status = 'przeczytana' 
+            `SELECT
+                 DATE_FORMAT(s.data_zakonczenia, '%Y-%m') as period,
+                 COUNT(*) as books_read,
+                 SUM(k.liczba_stron) as pages_read
+             FROM statusy_czytania s
+                      JOIN ksiazki k ON s.ksiazka_id = k.id
+             WHERE s.uzytkownik_id = ?
+               AND s.status = 'przeczytana'
                AND s.data_zakonczenia IS NOT NULL
-               ${dateCondition}
+                 ${dateCondition}
              GROUP BY DATE_FORMAT(s.data_zakonczenia, '%Y-%m')
              ORDER BY period`,
             [userId]
@@ -70,46 +70,46 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
 
         // Średnia ocen
         const [averageRating] = await db.promisePool.execute(
-            `SELECT AVG(s.ocena) as avg_rating 
-             FROM statusy_czytania s 
+            `SELECT AVG(s.ocena) as avg_rating
+             FROM statusy_czytania s
              WHERE s.uzytkownik_id = ? AND s.ocena IS NOT NULL`,
             [userId]
         );
 
-        // Najlepiej oceniane książki - POPRAWIONE ZAPYTANIE
+        // Najlepiej oceniane książki
         const [topRated] = await db.promisePool.execute(
-            `SELECT 
-                k.tytul,
-                k.id,
-                GROUP_CONCAT(DISTINCT a.imie_nazwisko) as autorzy,
-                s.ocena 
-             FROM statusy_czytania s 
-             JOIN ksiazki k ON s.ksiazka_id = k.id 
-             LEFT JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id
-             LEFT JOIN autorzy a ON ka.autor_id = a.id
+            `SELECT
+                 k.tytul,
+                 k.id,
+                 GROUP_CONCAT(DISTINCT a.imie_nazwisko) as autorzy,
+                 s.ocena
+             FROM statusy_czytania s
+                      JOIN ksiazki k ON s.ksiazka_id = k.id
+                      LEFT JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id
+                      LEFT JOIN autorzy a ON ka.autor_id = a.id
              WHERE s.uzytkownik_id = ? AND s.ocena IS NOT NULL
              GROUP BY k.id, k.tytul, s.ocena
-             ORDER BY s.ocena DESC 
-             LIMIT 5`,
+             ORDER BY s.ocena DESC
+                 LIMIT 5`,
             [userId]
         );
 
-        // Ostatnio przeczytane książki - POPRAWIONE ZAPYTANIE
+        // Ostatnio przeczytane książki
         const [recentBooks] = await db.promisePool.execute(
-            `SELECT 
-                k.tytul,
-                k.id,
-                k.url_okladki,
-                GROUP_CONCAT(DISTINCT a.imie_nazwisko) as autorzy,
-                s.data_zakonczenia
-             FROM statusy_czytania s 
-             JOIN ksiazki k ON s.ksiazka_id = k.id 
-             LEFT JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id
-             LEFT JOIN autorzy a ON ka.autor_id = a.id
+            `SELECT
+                 k.tytul,
+                 k.id,
+                 k.url_okladki,
+                 GROUP_CONCAT(DISTINCT a.imie_nazwisko) as autorzy,
+                 s.data_zakonczenia
+             FROM statusy_czytania s
+                      JOIN ksiazki k ON s.ksiazka_id = k.id
+                      LEFT JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id
+                      LEFT JOIN autorzy a ON ka.autor_id = a.id
              WHERE s.uzytkownik_id = ? AND s.status = 'przeczytana'
              GROUP BY k.id, k.tytul, k.url_okladki, s.data_zakonczenia
-             ORDER BY s.data_zakonczenia DESC 
-             LIMIT 5`,
+             ORDER BY s.data_zakonczenia DESC
+                 LIMIT 5`,
             [userId]
         );
 
@@ -118,7 +118,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
                 booksRead: readBooks[0].count || 0,
                 currentlyReading: readingBooks[0].count || 0,
                 totalPages: totalPages[0].total || 0,
-                readingTime: Math.round((totalPages[0].total || 0) * 2.5 / 60), // 2.5 min na stronę
+                readingTime: Math.round((totalPages[0].total || 0) * 2.5 / 60),
                 averageRating: parseFloat(averageRating[0].avg_rating || 0).toFixed(1),
                 booksPerMonth: readingTimeline.length > 0 ?
                     (readBooks[0].count / readingTimeline.length).toFixed(1) : 0
@@ -143,15 +143,15 @@ router.get('/analytics', authenticateToken, async (req, res) => {
 
         // Miesięczne statystyki
         const [monthlyStats] = await db.promisePool.execute(
-            `SELECT 
-                MONTH(s.data_zakonczenia) as month,
-                COUNT(*) as books_read,
-                SUM(k.liczba_stron) as pages_read,
-                AVG(s.ocena) as avg_rating
-             FROM statusy_czytania s 
-             JOIN ksiazki k ON s.ksiazka_id = k.id 
-             WHERE s.uzytkownik_id = ? 
-               AND s.status = 'przeczytana' 
+            `SELECT
+                 MONTH(s.data_zakonczenia) as month,
+                 COUNT(*) as books_read,
+                 SUM(k.liczba_stron) as pages_read,
+                 AVG(s.ocena) as avg_rating
+             FROM statusy_czytania s
+                 JOIN ksiazki k ON s.ksiazka_id = k.id
+             WHERE s.uzytkownik_id = ?
+               AND s.status = 'przeczytana'
                AND YEAR(s.data_zakonczenia) = ?
              GROUP BY MONTH(s.data_zakonczenia)
              ORDER BY month`,
@@ -160,57 +160,57 @@ router.get('/analytics', authenticateToken, async (req, res) => {
 
         // Długość książek
         const [bookLengths] = await db.promisePool.execute(
-            `SELECT 
-                CASE 
-                    WHEN k.liczba_stron < 200 THEN 'Krótkie (<200 str)'
-                    WHEN k.liczba_stron BETWEEN 200 AND 400 THEN 'Średnie (200-400 str)'
-                    WHEN k.liczba_stron BETWEEN 401 AND 600 THEN 'Długie (401-600 str)'
-                    ELSE 'Bardzo długie (>600 str)'
-                END as length_category,
-                COUNT(*) as count
-             FROM statusy_czytania s 
-             JOIN ksiazki k ON s.ksiazka_id = k.id 
+            `SELECT
+                 CASE
+                     WHEN k.liczba_stron < 200 THEN 'Krótkie (<200 str)'
+                     WHEN k.liczba_stron BETWEEN 200 AND 400 THEN 'Średnie (200-400 str)'
+                     WHEN k.liczba_stron BETWEEN 401 AND 600 THEN 'Długie (401-600 str)'
+                     ELSE 'Bardzo długie (>600 str)'
+                     END as length_category,
+                 COUNT(*) as count
+             FROM statusy_czytania s
+                 JOIN ksiazki k ON s.ksiazka_id = k.id
              WHERE s.uzytkownik_id = ? AND s.status = 'przeczytana'
              GROUP BY length_category
              ORDER BY count DESC`,
             [userId]
         );
 
-        // Tempo czytania (stron/dzień) - POPRAWIONE ZAPYTANIE
+        // Tempo czytania (stron/dzień)
         const [readingPace] = await db.promisePool.execute(
-            `SELECT 
-                k.id,
-                k.tytul,
-                k.liczba_stron,
-                DATEDIFF(s.data_zakonczenia, s.data_rozpoczecia) as days_to_read,
-                ROUND(k.liczba_stron / NULLIF(DATEDIFF(s.data_zakonczenia, s.data_rozpoczecia), 0), 2) as pages_per_day
-             FROM statusy_czytania s 
-             JOIN ksiazki k ON s.ksiazka_id = k.id 
-             WHERE s.uzytkownik_id = ? 
+            `SELECT
+                 k.id,
+                 k.tytul,
+                 k.liczba_stron,
+                 DATEDIFF(s.data_zakonczenia, s.data_rozpoczecia) as days_to_read,
+                 ROUND(k.liczba_stron / NULLIF(DATEDIFF(s.data_zakonczenia, s.data_rozpoczecia), 0), 2) as pages_per_day
+             FROM statusy_czytania s
+                      JOIN ksiazki k ON s.ksiazka_id = k.id
+             WHERE s.uzytkownik_id = ?
                AND s.status = 'przeczytana'
-               AND s.data_rozpoczecia IS NOT NULL 
+               AND s.data_rozpoczecia IS NOT NULL
                AND s.data_zakonczenia IS NOT NULL
                AND DATEDIFF(s.data_zakonczenia, s.data_rozpoczecia) > 0
              ORDER BY pages_per_day DESC
-             LIMIT 10`,
+                 LIMIT 10`,
             [userId]
         );
 
-        // Ulubieni autorzy - POPRAWIONE ZAPYTANIE
+        // Ulubieni autorzy
         const [topAuthors] = await db.promisePool.execute(
-            `SELECT 
-                a.imie_nazwisko as autor,
-                COUNT(DISTINCT k.id) as books_read,
-                AVG(s.ocena) as avg_rating
-             FROM statusy_czytania s 
-             JOIN ksiazki k ON s.ksiazka_id = k.id 
-             JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id
-             JOIN autorzy a ON ka.autor_id = a.id
+            `SELECT
+                 a.imie_nazwisko as autor,
+                 COUNT(DISTINCT k.id) as books_read,
+                 AVG(s.ocena) as avg_rating
+             FROM statusy_czytania s
+                      JOIN ksiazki k ON s.ksiazka_id = k.id
+                      JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id
+                      JOIN autorzy a ON ka.autor_id = a.id
              WHERE s.uzytkownik_id = ? AND s.status = 'przeczytana'
              GROUP BY a.imie_nazwisko, a.id
              HAVING COUNT(DISTINCT k.id) >= 1
              ORDER BY books_read DESC, avg_rating DESC
-             LIMIT 10`,
+                 LIMIT 10`,
             [userId]
         );
 
@@ -242,22 +242,22 @@ router.get('/reading-goals', authenticateToken, async (req, res) => {
 
         // Przeczytane książki w tym roku
         const [yearlyProgress] = await db.promisePool.execute(
-            `SELECT COUNT(*) as count 
-             FROM statusy_czytania 
-             WHERE uzytkownik_id = ? 
-               AND status = 'przeczytana' 
+            `SELECT COUNT(*) as count
+             FROM statusy_czytania
+             WHERE uzytkownik_id = ?
+               AND status = 'przeczytana'
                AND YEAR(data_zakonczenia) = YEAR(CURDATE())`,
             [userId]
         );
 
         // Postęp w poprzednich miesiącach
         const [monthlyProgress] = await db.promisePool.execute(
-            `SELECT 
-                MONTH(data_zakonczenia) as month,
-                COUNT(*) as books_read
-             FROM statusy_czytania 
-             WHERE uzytkownik_id = ? 
-               AND status = 'przeczytana' 
+            `SELECT
+                 MONTH(data_zakonczenia) as month,
+                 COUNT(*) as books_read
+             FROM statusy_czytania
+             WHERE uzytkownik_id = ?
+               AND status = 'przeczytana'
                AND YEAR(data_zakonczenia) = YEAR(CURDATE())
              GROUP BY MONTH(data_zakonczenia)
              ORDER BY month`,
@@ -310,7 +310,7 @@ router.put('/reading-goals', authenticateToken, async (req, res) => {
 router.get('/reading-timeline', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { period = 'year' } = req.query; // month, year
+        const { period = 'year' } = req.query;
 
         let dateFormat, groupBy, dateRange;
 
@@ -325,17 +325,17 @@ router.get('/reading-timeline', authenticateToken, async (req, res) => {
         }
 
         const [timeline] = await db.promisePool.execute(
-            `SELECT 
-                ${groupBy} as period,
-                COUNT(*) as books_read,
-                SUM(k.liczba_stron) as pages_read,
-                AVG(s.ocena) as avg_rating
-             FROM statusy_czytania s 
-             JOIN ksiazki k ON s.ksiazka_id = k.id 
-             WHERE s.uzytkownik_id = ? 
-               AND s.status = 'przeczytana' 
+            `SELECT
+                 ${groupBy} as period,
+                 COUNT(*) as books_read,
+                 SUM(k.liczba_stron) as pages_read,
+                 AVG(s.ocena) as avg_rating
+             FROM statusy_czytania s
+                      JOIN ksiazki k ON s.ksiazka_id = k.id
+             WHERE s.uzytkownik_id = ?
+               AND s.status = 'przeczytana'
                AND s.data_zakonczenia IS NOT NULL
-               ${dateRange}
+                 ${dateRange}
              GROUP BY period
              ORDER BY period`,
             [userId]
@@ -348,14 +348,13 @@ router.get('/reading-timeline', authenticateToken, async (req, res) => {
     }
 });
 
-// Statystyki porównawcze (tygodniowe/roczne)
+// Statystyki porównawcze
 router.get('/comparison', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { type = 'yearly' } = req.query; // yearly, monthly
+        const { type = 'yearly' } = req.query;
 
         if (type === 'yearly') {
-            // Porównanie z poprzednimi latami
             const [yearlyComparison] = await db.promisePool.execute(
                 `SELECT
                      YEAR(data_zakonczenia) as year,
@@ -373,7 +372,6 @@ router.get('/comparison', authenticateToken, async (req, res) => {
 
             res.json({ comparison: yearlyComparison, type: 'yearly' });
         } else {
-            // Porównanie miesięczne
             const [monthlyComparison] = await db.promisePool.execute(
                 `SELECT
                      CONCAT(YEAR(data_zakonczenia), '-', LPAD(MONTH(data_zakonczenia), 2, '0')) as period,
@@ -401,17 +399,16 @@ router.get('/health', authenticateToken, async (req, res) => {
     try {
         const userId = req.user.userId;
 
-        // Sprawdź czy użytkownik ma jakieś dane statystyczne
         const [hasData] = await db.promisePool.execute(
             'SELECT COUNT(*) as count FROM statusy_czytania WHERE uzytkownik_id = ?',
             [userId]
         );
 
         const [tableStats] = await db.promisePool.execute(
-            `SELECT 
-                (SELECT COUNT(*) FROM ksiazki) as total_books,
-                (SELECT COUNT(*) FROM statusy_czytania WHERE uzytkownik_id = ?) as user_records,
-                (SELECT COUNT(*) FROM statusy_czytania WHERE status = 'przeczytana' AND uzytkownik_id = ?) as read_books`,
+            `SELECT
+                     (SELECT COUNT(*) FROM ksiazki) as total_books,
+                     (SELECT COUNT(*) FROM statusy_czytania WHERE uzytkownik_id = ?) as user_records,
+                     (SELECT COUNT(*) FROM statusy_czytania WHERE status = 'przeczytana' AND uzytkownik_id = ?) as read_books`,
             [userId, userId]
         );
 

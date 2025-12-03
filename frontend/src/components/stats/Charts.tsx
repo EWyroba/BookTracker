@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { booksAPI } from '../../services/api';
+import api from '../../services/api';
 import Icon from '../common/Icon';
 
 const StatsContainer = styled.div`
@@ -340,9 +340,9 @@ const Charts: React.FC = () => {
         try {
             setLoading(true);
             const [dashboardResponse, analyticsResponse, goalsResponse] = await Promise.all([
-                booksAPI.get(`/stats/dashboard?period=${timeFilter}`),
-                booksAPI.get('/stats/analytics'),
-                booksAPI.get('/stats/reading-goals')
+                api.get(`/stats/dashboard?period=${timeFilter}`),
+                api.get('/stats/analytics'),
+                api.get('/stats/reading-goals')
             ]);
 
             const dashboardData = dashboardResponse.data;

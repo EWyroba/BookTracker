@@ -1,10 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import styled from 'styled-components';
-import { booksAPI } from '../../services/api';
+import api from '../../services/api';
 import Icon from '../common/Icon';
 import EditBookForm from './EditBookForm';
-import AddNoteForm from './AddNoteForm';
 import EditNoteForm from './EditNoteForm';
 
 const BookDetailsContainer = styled.div`
@@ -304,15 +304,13 @@ const NotePage = styled.div`
 const NoteDate = styled.div`
   font-size: 0.8rem;
   color: ${props => props.theme.colors.textSecondary};
-  margin-right: ${props => props.theme.spacing.xl}; /* Dodaj odstęp od przycisków */
+  margin-right: ${props => props.theme.spacing.xl};
 `;
 
 const NoteActions = styled.div`
   display: flex;
   gap: ${props => props.theme.spacing.xs};
 `;
-
-
 
 const NoteText = styled.p`
   color: ${props => props.theme.colors.text};
@@ -327,7 +325,6 @@ const QuoteText = styled.blockquote`
   color: ${props => props.theme.colors.textSecondary};
   font-style: italic;
 `;
-
 
 const NoteActionButton = styled.button`
   background: none;
@@ -404,7 +401,7 @@ const ModalActions = styled.div`
 `;
 
 interface BookDetails {
-    id: number;
+    id: string;
     tytul: string;
     autorzy?: string[];
     isbn?: string;
@@ -429,6 +426,156 @@ interface BookDetails {
     };
 }
 
+const SimpleNoteForm: React.FC<{
+    bookId: string;
+    bookTitle: string;
+    onCancel: () => void;
+    onSuccess: () => void;
+}> = ({ bookId, bookTitle, onCancel, onSuccess }) => {
+    const [formData, setFormData] = useState({
+        numer_strony: '',
+        notatka: '',
+        tekst_cytatu: ''
+    });
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!formData.numer_strony || !formData.notatka.trim()) {
+            setError('Numer strony i notatka są wymagane');
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+
+        try {
+            await api.post(`/books/${bookId}/notes`, {
+                ...formData,
+                numer_strony: parseInt(formData.numer_strony)
+            });
+            onSuccess();
+        } catch (err: any) {
+            setError(err.response?.data?.message || 'Wystąpił błąd podczas dodawania notatki');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <ModalOverlay onClick={onCancel}>
+            <ModalContent onClick={e => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+                <ModalTitle>
+                    <Icon name="FiPlus" />
+                    Dodaj notatkę
+                </ModalTitle>
+                <p style={{ color: '#666', marginBottom: '1rem' }}>
+                    Książka: <strong>{bookTitle}</strong>
+                </p>
+
+                <form onSubmit={handleSubmit}>
+                    {error && (
+                        <div style={{
+                            background: '#f8d7da',
+                            border: '1px solid #f5c6cb',
+                            color: '#721c24',
+                            padding: '0.75rem',
+                            borderRadius: '0.375rem',
+                            marginBottom: '1rem'
+                        }}>
+                            {error}
+                        </div>
+                    )}
+
+                    <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                            Numer strony *
+                        </label>
+                        <input
+                            type="number"
+                            value={formData.numer_strony}
+                            onChange={(e) => setFormData(prev => ({ ...prev, numer_strony: e.target.value }))}
+                            placeholder="Na której stronie dodajesz notatkę?"
+                            min="1"
+                            required
+                            disabled={loading}
+                            style={{
+                                width: '100%',
+                                padding: '0.5rem',
+                                border: '1px solid #ccc',
+                                borderRadius: '0.375rem',
+                                fontSize: '1rem'
+                            }}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                            Cytat (opcjonalnie)
+                        </label>
+                        <textarea
+                            value={formData.tekst_cytatu}
+                            onChange={(e) => setFormData(prev => ({ ...prev, tekst_cytatu: e.target.value }))}
+                            placeholder="Wklej interesujący cytat z książki..."
+                            rows={3}
+                            disabled={loading}
+                            style={{
+                                width: '100%',
+                                padding: '0.5rem',
+                                border: '1px solid #ccc',
+                                borderRadius: '0.375rem',
+                                fontSize: '1rem',
+                                resize: 'vertical'
+                            }}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                            Twoja notatka *
+                        </label>
+                        <textarea
+                            value={formData.notatka}
+                            onChange={(e) => setFormData(prev => ({ ...prev, notatka: e.target.value }))}
+                            placeholder="Co myślisz o tej części książki? Co Cię zainteresowało?"
+                            rows={4}
+                            required
+                            disabled={loading}
+                            style={{
+                                width: '100%',
+                                padding: '0.5rem',
+                                border: '1px solid #ccc',
+                                borderRadius: '0.375rem',
+                                fontSize: '1rem',
+                                resize: 'vertical'
+                            }}
+                        />
+                    </div>
+
+                    <ModalActions>
+                        <ActionButton
+                            type="button"
+                            onClick={onCancel}
+                            disabled={loading}
+                        >
+                            Anuluj
+                        </ActionButton>
+                        <ActionButton
+                            type="submit"
+                            $variant="primary"
+                            disabled={loading}
+                        >
+                            {loading ? 'Dodawanie...' : 'Dodaj notatkę'}
+                        </ActionButton>
+                    </ModalActions>
+                </form>
+            </ModalContent>
+        </ModalOverlay>
+    );
+};
+
 const BookDetailsPage: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -445,12 +592,9 @@ const BookDetailsPage: React.FC = () => {
 
     const fetchBookDetails = async () => {
         try {
-            console.log('🔄 Fetching book details for ID:', id);
-            const response = await booksAPI.get(`/books/${id}`);
-            console.log('📚 Book details response:', response.data);
+            const response = await api.get(`/books/${id}`);
             setBook(response.data.book);
         } catch (err: any) {
-            console.error('❌ Error fetching book details:', err);
             setError(err.response?.data?.message || 'Wystąpił błąd podczas ładowania książki');
         } finally {
             setLoading(false);
@@ -466,10 +610,9 @@ const BookDetailsPage: React.FC = () => {
     const handleDeleteBook = async () => {
         setDeleting(true);
         try {
-            await booksAPI.delete(`/books/${id}`);
+            await api.delete(`/books/${id}`);
             navigate('/books');
         } catch (err: any) {
-            console.error('Error deleting book:', err);
             alert(err.response?.data?.message || 'Wystąpił błąd podczas usuwania książki');
         } finally {
             setDeleting(false);
@@ -480,10 +623,9 @@ const BookDetailsPage: React.FC = () => {
     const handleDeleteNote = async (noteId: string) => {
         setDeletingNote(noteId);
         try {
-            await booksAPI.delete(`/books/notes/${noteId}`);
+            await api.delete(`/books/notes/${noteId}`);
             fetchBookDetails();
         } catch (err: any) {
-            console.error('Error deleting note:', err);
             alert(err.response?.data?.message || 'Wystąpił błąd podczas usuwania notatki');
         } finally {
             setDeletingNote(null);
@@ -493,18 +635,16 @@ const BookDetailsPage: React.FC = () => {
     const handleStatusChange = async (newStatus: string, pageNumber?: number) => {
         try {
             const pageToUpdate = pageNumber !== undefined ? pageNumber : book?.aktualna_strona || 0;
-            await booksAPI.post(`/books/${id}/status`, {
+            await api.post(`/books/${id}/status`, {
                 status: newStatus,
                 aktualna_strona: pageToUpdate
             });
             fetchBookDetails();
         } catch (err: any) {
-            console.error('Error updating status:', err);
             alert(err.response?.data?.message || 'Wystąpił błąd podczas aktualizacji statusu');
         }
     };
 
-    // BEZPIECZNE DOSTĘPY DO DANYCH
     const safeAuthors = book?.autorzy || [];
     const safeNotes = book?.notatki || [];
     const safeStats = book?.statystyki || { liczba_notatek: 0, ostatnia_strona_z_notatka: 0 };
@@ -512,7 +652,6 @@ const BookDetailsPage: React.FC = () => {
     const safePageCount = book?.liczba_stron || 0;
     const safeCurrentPage = book?.aktualna_strona || 0;
     const safeProgress = book?.postep || 0;
-    const safeWydawnictwo = book?.wydawnictwo || 'Nieznane'; // DODANE
 
     if (loading) {
         return (
@@ -588,7 +727,6 @@ const BookDetailsPage: React.FC = () => {
     return (
         <BookDetailsContainer>
             <div className="container">
-                {/* Header */}
                 <Header>
                     <BookCover
                         src={book.url_okladki || 'https://via.placeholder.com/300x450/1a1a1a/666666?text=Brak+okładki'}
@@ -628,7 +766,6 @@ const BookDetailsPage: React.FC = () => {
                                 </MetaValue>
                             </MetaItem>
 
-                            {/* WYDAWNICTWO - DODANE */}
                             <MetaItem>
                                 <MetaLabel>Wydawnictwo</MetaLabel>
                                 <MetaValue>{book.wydawnictwo || 'Nieznane'}</MetaValue>
@@ -645,7 +782,6 @@ const BookDetailsPage: React.FC = () => {
                             </MetaItem>
                         </BookMeta>
 
-                        {/* Postęp czytania */}
                         {book.status === 'aktualnie_czytam' && safePageCount > 0 && (
                             <ReadingProgress>
                                 <ProgressText>
@@ -720,7 +856,6 @@ const BookDetailsPage: React.FC = () => {
                                     })}
                                 </QuickPages>
 
-                                {/* Pasek postępu z możliwością kliknięcia */}
                                 <div style={{ marginTop: '1rem' }}>
                                     <ProgressBar
                                         onClick={(e) => {
@@ -747,7 +882,6 @@ const BookDetailsPage: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Dodatkowy przycisk do cofnięcia statusu */}
                                 {book.status === 'przeczytana' && (
                                     <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #333' }}>
                                         <ActionButton
@@ -767,7 +901,6 @@ const BookDetailsPage: React.FC = () => {
                             </PageUpdateForm>
                         )}
 
-                        {/* Akcje */}
                         <Actions>
                             <ActionButton
                                 $variant="primary"
@@ -822,7 +955,6 @@ const BookDetailsPage: React.FC = () => {
                     </BookInfo>
                 </Header>
 
-                {/* Tabs */}
                 <Tabs>
                     <Tab
                         $active={activeTab === 'description'}
@@ -844,7 +976,6 @@ const BookDetailsPage: React.FC = () => {
                     </Tab>
                 </Tabs>
 
-                {/* Tab Content */}
                 <TabContent>
                     {activeTab === 'description' && (
                         <Description>
@@ -910,7 +1041,6 @@ const BookDetailsPage: React.FC = () => {
                                     <MetaValue>{book.jezyk || 'Nieznany'}</MetaValue>
                                 </MetaItem>
 
-                                {/* DODAJ WYDAWNICTWO W SZCZEGÓŁACH */}
                                 <MetaItem>
                                     <MetaLabel>Wydawnictwo</MetaLabel>
                                     <MetaValue>{book.wydawnictwo || 'Nieznane'}</MetaValue>
@@ -956,7 +1086,6 @@ const BookDetailsPage: React.FC = () => {
                 </TabContent>
             </div>
 
-            {/* Modal usuwania książki */}
             {showDeleteModal && (
                 <ModalOverlay onClick={() => setShowDeleteModal(false)}>
                     <ModalContent onClick={(e) => e.stopPropagation()}>
@@ -986,19 +1115,6 @@ const BookDetailsPage: React.FC = () => {
                 </ModalOverlay>
             )}
 
-            {/* Formularz edycji książki */}
-            {showEditForm && (
-                <EditBookForm
-                    book={book}
-                    onCancel={() => setShowEditForm(false)}
-                    onSuccess={() => {
-                        setShowEditForm(false);
-                        fetchBookDetails();
-                    }}
-                />
-            )}
-
-            {/* Formularz edycji książki */}
             {showEditForm && book && (
                 <EditBookForm
                     book={book}
@@ -1010,7 +1126,18 @@ const BookDetailsPage: React.FC = () => {
                 />
             )}
 
-            {/* Formularz edycji notatki */}
+            {showAddNoteForm && book && (
+                <SimpleNoteForm
+                    bookId={book.id}
+                    bookTitle={book.tytul}
+                    onCancel={() => setShowAddNoteForm(false)}
+                    onSuccess={() => {
+                        setShowAddNoteForm(false);
+                        fetchBookDetails();
+                    }}
+                />
+            )}
+
             {editingNote && book && (
                 <EditNoteForm
                     noteId={editingNote}

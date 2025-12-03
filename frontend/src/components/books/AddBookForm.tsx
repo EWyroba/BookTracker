@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { booksAPI } from '../../services/api';
+import api from '../../services/api';
 import Icon from '../common/Icon';
 
 const FormOverlay = styled.div`
@@ -178,7 +178,7 @@ const AddBookForm: React.FC<AddBookFormProps> = ({ onCancel, onSuccess }) => {
     useEffect(() => {
         const fetchGenres = async () => {
             try {
-                const response = await booksAPI.get('/books/genres/available');
+                const response = await api.get('/books/genres/available');
                 setGenres(response.data.genres);
             } catch (error) {
                 console.error('Błąd podczas pobierania gatunków:', error);
@@ -229,7 +229,7 @@ const AddBookForm: React.FC<AddBookFormProps> = ({ onCancel, onSuccess }) => {
         setError('');
 
         try {
-            await booksAPI.post('/books', {
+            await api.post('/books', {
                 ...formData,
                 liczba_stron: parseInt(formData.liczba_stron),
                 data_wydania: formData.data_wydania || null

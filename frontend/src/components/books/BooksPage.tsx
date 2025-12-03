@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { booksAPI } from '../../services/api';
+import api from '../../services/api';
 import BookCard from './BookCard';
 import AddBookForm from './AddBookForm';
 import { Book } from '../../types';
@@ -69,7 +69,7 @@ const BooksPage: React.FC = () => {
 
     const fetchBooks = async () => {
         try {
-            const response = await booksAPI.get('/books');
+            const response = await api.get('/books');
             setBooks(response.data.books);
         } catch (error) {
             console.error('Error fetching books:', error);

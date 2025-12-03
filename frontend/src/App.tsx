@@ -12,6 +12,7 @@ import BooksPage from './components/books/BooksPage';
 import SearchPage from './components/search/SearchPage';
 import Charts from './components/stats/Charts';
 import BookDetailsPage from './components/books/BookDetailsPage';
+import ProfilePage from './components/profile/ProfilePage';
 
 
 // Protected Route component
@@ -97,6 +98,11 @@ function AppContent() {
                             <PublicRoute>
                                 <RegisterForm />
                             </PublicRoute>
+                        } />
+                        <Route path="/profile" element={
+                            <ProtectedRoute>
+                                <ProfilePage />
+                            </ProtectedRoute>
                         } />
                     </Routes>
                 </main>

@@ -36,3 +36,11 @@ export interface ReadingStatus {
     ocena?: number;
     recenzja?: string;
 }
+export interface UserStats {
+    booksRead: number;
+    currentlyReading: number;
+    totalPages: number;
+    averageRating: string;
+    notesCount: number;
+    registrationYear: string;
+}

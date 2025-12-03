@@ -290,7 +290,7 @@ INSERT INTO `wydawnictwa` (`id`, `nazwa`, `url_strony`, `rok_zalozenia`, `kraj`)
 (2, 'Znak', 'https://www.znak.com.pl', 1959, 'Polska'),
 (3, 'HarperCollins', 'https://www.harpercollins.com', 1817, 'USA'),
 (4, 'Albatros', 'https://www.albatros.com.pl', 1990, 'Polska');
-
+INSERT INTO wydawnictwa (nazwa) VALUES ('Nieznane');
 -- --------------------------------------------------------
 
 --
