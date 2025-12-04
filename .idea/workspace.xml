@@ -5,54 +5,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="858bbc07-cbea-49dc-bb6d-0295d872c757" name="Changes" comment=":)">
-      <change afterPath="$PROJECT_DIR$/backend/middleware/authMiddleware.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/public/book.png" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/common/LoadingSpinner.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/common/ProtectedRoute.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/components/profile/ProfilePage.tsx" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/hooks/useAuthCheck.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/frontend/src/styles/main.css" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/config/database.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/config/database.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/controllers/authController.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/controllers/authController.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/controllers/booksController.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/controllers/statsController.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/controllers/statsController.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/middleware/auth.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/model/User.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/model/User.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/backend/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/backend/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/routes/auth.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routes/auth.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/routes/books.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routes/books.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/routes/search.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routes/search.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/routes/stats.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routes/stats.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/backend/server.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/server.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/database/booktracker.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/booktracker.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/public/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/public/index.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/App.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/auth/LoginForm.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/auth/LoginForm.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/auth/RegisterForm.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/auth/RegisterForm.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/books/AddBookForm.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/books/AddBookForm.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/books/AddNoteForm.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/books/AddNoteForm.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/books/BookCard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/books/BookCard.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/books/BookDetailsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/books/BookDetailsPage.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/books/BooksPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/books/BooksPage.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/books/EditBookForm.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/books/EditBookForm.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/books/EditNoteForm.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/books/EditNoteForm.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/common/Header.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/common/Header.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/common/Icon.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/common/Icon.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/dashboard/Dashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/dashboard/Dashboard.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/search/SearchPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/search/SearchPage.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/stats/Charts.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/stats/Charts.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/components/stats/DashboardCharts.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/stats/DashboardCharts.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/contexts/AuthContext.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/contexts/AuthContext.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/hooks/useAuth.ts" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/services/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/services/api.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/styles/GlobalStyles.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/styles/GlobalStyles.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/types/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/types/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/utils/constants.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/utils/constants.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/tsconfig.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/tsconfig.json" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -70,6 +28,11 @@
     </option>
   </component>
   <component name="Git.Settings">
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="master" />
+      </map>
+    </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
     <option name="UPDATE_TYPE" value="REBASE" />
   </component>
@@ -100,7 +63,7 @@
     "RunOnceActivity.OpenProjectViewOnStart": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "WebServerToolWindowFactoryState": "false",
-    "git-widget-placeholder": "master",
+    "git-widget-placeholder": "search",
     "last_opened_file_path": "D:/sem7/TI/kolokwium",
     "list.type.of.created.stylesheet": "CSS",
     "node.js.detected.package.eslint": "true",
@@ -158,7 +121,7 @@
       <workItem from="1763974552318" duration="4953000" />
       <workItem from="1764069444264" duration="3531000" />
       <workItem from="1764354896097" duration="50000" />
-      <workItem from="1764760259344" duration="32063000" />
+      <workItem from="1764760259344" duration="36896000" />
     </task>
     <task id="LOCAL-00001" summary=":)">
       <option name="closed" value="true" />
@@ -168,7 +131,15 @@
       <option name="project" value="LOCAL" />
       <updated>1763730329448</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary=":)">
+      <option name="closed" value="true" />
+      <created>1764800593888</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1764800593888</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

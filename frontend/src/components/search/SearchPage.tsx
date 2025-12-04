@@ -97,6 +97,8 @@ const BookCard = styled.div`
   padding: ${props => props.theme.spacing.lg};
   transition: all 0.3s ease;
   position: relative;
+  display: flex;
+  flex-direction: column;
 
   &:hover {
     transform: translateY(-2px);
@@ -107,7 +109,7 @@ const BookCard = styled.div`
 
 const BookCover = styled.img`
   width: 100%;
-  height: 450px;
+  height: 400px;
   object-fit: cover;
   border-radius: ${props => props.theme.borderRadius.md};
   margin-bottom: ${props => props.theme.spacing.md};
@@ -117,26 +119,51 @@ const BookCover = styled.img`
 const BookTitle = styled.h3`
   font-size: 1.1rem;
   font-weight: 600;
-  margin-bottom: ${props => props.theme.spacing.sm};
+  margin-bottom: ${props => props.theme.spacing.xs};
   line-height: 1.3;
   color: ${props => props.theme.colors.text};
+  flex-shrink: 0;
 `;
 
 const BookAuthors = styled.p`
   color: ${props => props.theme.colors.textSecondary};
   font-size: 0.9rem;
   margin-bottom: ${props => props.theme.spacing.sm};
+  flex-shrink: 0;
 `;
 
-const BookDescription = styled.p`
+const DescriptionContainer = styled.div`
+  margin-bottom: ${props => props.theme.spacing.md};
+  flex-grow: 1;
+  overflow: hidden;
+`;
+
+const BookDescription = styled.p<{ $expanded: boolean }>`
   color: ${props => props.theme.colors.textMuted};
   font-size: 0.85rem;
   line-height: 1.4;
-  margin-bottom: ${props => props.theme.spacing.md};
+  margin-bottom: ${props => props.theme.spacing.xs};
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: ${props => props.$expanded ? 'unset' : '3'};
   -webkit-box-orient: vertical;
   overflow: hidden;
+  transition: all 0.3s ease;
+`;
+
+const ExpandButton = styled.button`
+  background: none;
+  border: none;
+  color: ${props => props.theme.colors.primary};
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  font-weight: 600;
+
+  &:hover {
+    text-decoration: underline;
+  }
 `;
 
 const BookMeta = styled.div`
@@ -146,12 +173,14 @@ const BookMeta = styled.div`
   margin-bottom: ${props => props.theme.spacing.md};
   font-size: 0.8rem;
   color: ${props => props.theme.colors.textSecondary};
+  flex-shrink: 0;
 `;
 
 const ActionButtons = styled.div`
   display: flex;
   flex-direction: column;
   gap: ${props => props.theme.spacing.sm};
+  flex-shrink: 0;
 `;
 
 const AddButton = styled.button<{ $added?: boolean }>`
@@ -297,6 +326,29 @@ const ProcessingBadge = styled.div`
   }
 `;
 
+// Funkcja pomocnicza do formatowania daty
+const formatDate = (dateString: string): string => {
+    if (!dateString) return 'Brak daty';
+
+    try {
+        // Próbuj sparsować datę
+        const date = new Date(dateString);
+
+        // Jeśli data jest nieprawidłowa, zwróć oryginalny string bez czasu
+        if (isNaN(date.getTime())) {
+            // Spróbuj wyciągnąć tylko część daty (bez czasu)
+            const dateOnly = dateString.split('T')[0];
+            return dateOnly || dateString;
+        }
+
+        // Formatuj datę jako YYYY-MM-DD
+        return date.toISOString().split('T')[0];
+    } catch (error) {
+        // W przypadku błędu, zwróć oryginalny string bez czasu
+        return dateString.split('T')[0] || dateString;
+    }
+};
+
 interface SearchResult {
     source: 'google' | 'local';
     googleBooksId?: string;
@@ -315,7 +367,20 @@ interface SearchResult {
     previewLink?: string;
     rating?: number | null;
     ratingsCount?: number;
+    readingStatus?: {
+        status: string;
+        ocena: number | null;
+        aktualna_strona: number;
+        postep: number;
+        data_rozpoczecia: string | null;
+        data_zakonczenia: string | null;
+    };
 }
+
+// Helper function to ensure source is always 'google' or 'local'
+const ensureSourceType = (source: any): 'google' | 'local' => {
+    return source === 'local' ? 'local' : 'google';
+};
 
 const SearchPage: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -324,12 +389,26 @@ const SearchPage: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [addingBooks, setAddingBooks] = useState<Set<string>>(new Set());
-    const [removingBook, setRemovingBook] = useState<string | null>(null);
+    const [removingBooks, setRemovingBooks] = useState<Set<string>>(new Set()); // Zmienione na Set
     const [totalResults, setTotalResults] = useState(0);
     const [currentPage, setCurrentPage] = useState(0);
     const [suggestions, setSuggestions] = useState<string[]>([]);
+    const [expandedDescriptions, setExpandedDescriptions] = useState<Set<string>>(new Set());
 
     const RESULTS_PER_PAGE = 12;
+
+    // Funkcja do rozwijania/zwijania opisu
+    const toggleDescription = (bookKey: string) => {
+        setExpandedDescriptions(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(bookKey)) {
+                newSet.delete(bookKey);
+            } else {
+                newSet.add(bookKey);
+            }
+            return newSet;
+        });
+    };
 
     // Pobierz sugestie przy załadowaniu
     useEffect(() => {
@@ -350,6 +429,7 @@ const SearchPage: React.FC = () => {
         if (!searchQuery.trim()) {
             setResults([]);
             setTotalResults(0);
+            setExpandedDescriptions(new Set()); // Wyczyść rozwinięte opisy
             return;
         }
 
@@ -371,9 +451,101 @@ const SearchPage: React.FC = () => {
             console.log('📦 Search response:', response.data);
 
             if (response.data.success) {
-                setResults(response.data.books || []);
+                // Przetwórz wyniki - upewnij się, że wszystkie pola są poprawnie zdefiniowane
+                const rawBooks = response.data.books || [];
+
+                // Filtruj duplikaty - preferuj książki z biblioteki użytkownika
+                const uniqueBooksMap = new Map<string, SearchResult>();
+
+                rawBooks.forEach((book: any) => {
+                    const key = book.existingBookId
+                        ? `id-${book.existingBookId}` // Użyj ID z bazy jeśli istnieje
+                        : `isbn-${book.isbn || ''}-${book.tytul || ''}`; // Użyj kombinacji ISBN i tytułu
+
+                    // Jeśli książka już jest w mapie, sprawdź którą preferować
+                    if (uniqueBooksMap.has(key)) {
+                        const existingBook = uniqueBooksMap.get(key)!;
+
+                        // Preferuj książkę która jest już w bibliotece użytkownika
+                        if (book.isInUserLibrary && !existingBook.isInUserLibrary) {
+                            uniqueBooksMap.set(key, {
+                                source: ensureSourceType(book.source),
+                                googleBooksId: book.googleBooksId || undefined,
+                                existingBookId: book.existingBookId || null,
+                                isInUserLibrary: Boolean(book.isInUserLibrary),
+                                tytul: book.tytul || 'Brak tytułu',
+                                autorzy: Array.isArray(book.autorzy) ? book.autorzy : ['Autor nieznany'],
+                                isbn: book.isbn || '',
+                                opis: book.opis || 'Brak opisu',
+                                liczba_stron: book.liczba_stron || null,
+                                data_wydania: book.data_wydania || '',
+                                wydawnictwo: book.wydawnictwo || '',
+                                gatunek: book.gatunek || 'Inne',
+                                jezyk: book.jezyk || 'pl',
+                                url_okladki: book.url_okladki || '',
+                                previewLink: book.previewLink || '',
+                                rating: book.rating || null,
+                                ratingsCount: book.ratingsCount || 0,
+                                readingStatus: book.readingStatus || undefined
+                            });
+                        }
+                        // Preferuj książkę z istniejącym ID (z naszej bazy)
+                        else if (book.existingBookId && !existingBook.existingBookId) {
+                            uniqueBooksMap.set(key, {
+                                source: 'local', // Traktuj jako lokalną jeśli ma ID z naszej bazy
+                                googleBooksId: book.googleBooksId || undefined,
+                                existingBookId: book.existingBookId || null,
+                                isInUserLibrary: Boolean(book.isInUserLibrary),
+                                tytul: book.tytul || 'Brak tytułu',
+                                autorzy: Array.isArray(book.autorzy) ? book.autorzy : ['Autor nieznany'],
+                                isbn: book.isbn || '',
+                                opis: book.opis || 'Brak opisu',
+                                liczba_stron: book.liczba_stron || null,
+                                data_wydania: book.data_wydania || '',
+                                wydawnictwo: book.wydawnictwo || '',
+                                gatunek: book.gatunek || 'Inne',
+                                jezyk: book.jezyk || 'pl',
+                                url_okladki: book.url_okladki || '',
+                                previewLink: book.previewLink || '',
+                                rating: book.rating || null,
+                                ratingsCount: book.ratingsCount || 0,
+                                readingStatus: book.readingStatus || undefined
+                            });
+                        }
+                    } else {
+                        // Dodaj nową książkę do mapy
+                        uniqueBooksMap.set(key, {
+                            source: ensureSourceType(book.source),
+                            googleBooksId: book.googleBooksId || undefined,
+                            existingBookId: book.existingBookId || null,
+                            isInUserLibrary: Boolean(book.isInUserLibrary),
+                            tytul: book.tytul || 'Brak tytułu',
+                            autorzy: Array.isArray(book.autorzy) ? book.autorzy : ['Autor nieznany'],
+                            isbn: book.isbn || '',
+                            opis: book.opis || 'Brak opisu',
+                            liczba_stron: book.liczba_stron || null,
+                            data_wydania: book.data_wydania || '',
+                            wydawnictwo: book.wydawnictwo || '',
+                            gatunek: book.gatunek || 'Inne',
+                            jezyk: book.jezyk || 'pl',
+                            url_okladki: book.url_okladki || '',
+                            previewLink: book.previewLink || '',
+                            rating: book.rating || null,
+                            ratingsCount: book.ratingsCount || 0,
+                            readingStatus: book.readingStatus || undefined
+                        });
+                    }
+                });
+
+                // Konwertuj mapę z powrotem na tablicę
+                const processedResults = Array.from(uniqueBooksMap.values());
+
+                console.log(`🔄 Filtered duplicates: ${rawBooks.length} -> ${processedResults.length} books`);
+
+                setResults(processedResults);
                 setTotalResults(response.data.totalResults || 0);
                 setCurrentPage(page);
+                setExpandedDescriptions(new Set()); // Wyczyść rozwinięte opisy dla nowego wyszukiwania
             } else {
                 setError(response.data.message || 'Wystąpił błąd podczas wyszukiwania');
                 setResults([]);
@@ -425,106 +597,129 @@ const SearchPage: React.FC = () => {
     };
 
     const handleAddBook = async (book: SearchResult) => {
-        console.log('📖 Book data for adding:', {
+        console.log('📖 ===== START ADDING BOOK =====');
+        console.log('📖 Book data:', {
             source: book.source,
             googleBooksId: book.googleBooksId,
             existingBookId: book.existingBookId,
             isInUserLibrary: book.isInUserLibrary,
-            title: book.tytul
+            title: book.tytul,
+            authors: book.autorzy
         });
 
-        // Jeśli książka jest już w bibliotece użytkownika
         if (book.isInUserLibrary) {
             alert('✅ Ta książka jest już w Twojej bibliotece');
             return;
         }
 
-        // Dla wszystkich książek używamy tego samego endpointu
-        const bookKey = book.googleBooksId || `local-${book.existingBookId}`;
-
-        // Dodaj książkę do listy przetwarzanych
+        // Użyj bezpiecznego klucza dla dodawanej książki
+        const bookKey = book.googleBooksId || `local-${book.existingBookId || 'temp'}`;
         setAddingBooks(prev => new Set(prev).add(bookKey));
 
         try {
-            console.log(`🔄 Adding book to library and database:`, {
-                title: book.tytul,
-                source: book.source,
-                googleBooksId: book.googleBooksId,
-                existingBookId: book.existingBookId
+            // Przygotuj dane
+            const bookData = {
+                title: book.tytul?.trim() || '',
+                authors: Array.isArray(book.autorzy) ? book.autorzy : [book.autorzy || 'Autor nieznany'],
+                isbn: book.isbn || '',
+                description: book.opis || 'Brak opisu',
+                pageCount: book.liczba_stron || 0,
+                publishedDate: book.data_wydania || '',
+                publisher: book.wydawnictwo || 'Nieznane wydawnictwo',
+                genre: book.gatunek || 'Inne',
+                language: book.jezyk || 'pl',
+                coverUrl: book.url_okladki || '',
+                googleBooksId: book.googleBooksId || null,
+                existingBookId: book.existingBookId || null
+            };
+
+            console.log('📤 Sending book data to server:', bookData);
+
+            // Wyślij żądanie
+            const response = await api.post('/search/add-book', bookData, {
+                timeout: 30000,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
             });
 
-            // Wysyłamy dane książki do backendu
-            const response = await api.post('/search/add-book', {
-                // Dane książki
-                title: book.tytul,
-                authors: book.autorzy,
-                isbn: book.isbn,
-                description: book.opis,
-                pageCount: book.liczba_stron,
-                publishedDate: book.data_wydania,
-                publisher: book.wydawnictwo,
-                genre: book.gatunek,
-                language: book.jezyk,
-                coverUrl: book.url_okladki,
-                // Identyfikatory
-                googleBooksId: book.googleBooksId,
-                existingBookId: book.existingBookId
-            }, {
-                timeout: 15000
-            });
-
-            console.log('📨 Add book response:', response.data);
+            console.log('📨 Server response:', response.data);
 
             if (response.data.success) {
-                // Aktualizuj wyniki wyszukiwania
-                setResults(prev => prev.map(b => {
-                    if ((b.googleBooksId === book.googleBooksId) ||
-                        (b.existingBookId === book.existingBookId)) {
-                        return {
-                            ...b,
-                            isInUserLibrary: true,
-                            existingBookId: response.data.bookId || b.existingBookId,
-                            source: 'local' // Teraz jest w lokalnej bazie
-                        };
-                    }
-                    return b;
-                }));
+                // Odśwież wyniki wyszukiwania - usuwając duplikaty
+                setResults(prev => {
+                    const updatedResults = prev.map(b => {
+                        const isSameBook = (b.googleBooksId && b.googleBooksId === book.googleBooksId) ||
+                            (b.existingBookId && b.existingBookId === book.existingBookId) ||
+                            (b.isbn === book.isbn && b.isbn) ||
+                            (b.tytul === book.tytul && b.autorzy[0] === book.autorzy[0]);
+
+                        if (isSameBook) {
+                            return {
+                                ...b,
+                                isInUserLibrary: true,
+                                existingBookId: response.data.bookId || b.existingBookId,
+                                source: 'local' as const // Użyj 'as const' dla TypeScript
+                            };
+                        }
+                        return b;
+                    });
+
+                    // Filtruj duplikaty po aktualizacji
+                    return filterDuplicates(updatedResults);
+                });
 
                 alert('✅ ' + response.data.message);
             } else {
-                alert('❌ ' + (response.data.message || 'Nie udało się dodać książki'));
+                alert('❌ ' + response.data.message);
             }
+
         } catch (err: any) {
-            console.error('💥 Add book error:', err);
+            console.error('💥 ERROR adding book:', err);
 
-            let errorMessage = 'Nie udało się dodać książki. Spróbuj ponownie.';
+            let errorMessage = 'Nie udało się dodać książki';
 
-            if (err.response?.data) {
-                errorMessage = err.response.data.message || err.response.data.error;
+            if (err.response) {
+                console.error('Response error:', err.response.data);
+                errorMessage = err.response.data?.message ||
+                    err.response.data?.error ||
+                    `Błąd ${err.response.status}`;
             } else if (err.request) {
-                errorMessage = 'Problem z połączeniem. Sprawdź internet.';
+                console.error('Request error:', err.request);
+                errorMessage = 'Nie udało się połączyć z serwerem';
             } else {
-                errorMessage = err.message;
+                errorMessage = err.message || 'Nieznany błąd';
             }
 
             alert('❌ ' + errorMessage);
         } finally {
-            // Usuń książkę z listy przetwarzanych
+            // Zawsze wyczyść stan dodawania
             setAddingBooks(prev => {
                 const newSet = new Set(prev);
                 newSet.delete(bookKey);
                 return newSet;
             });
+
+            console.log('📖 ===== END ADDING BOOK =====');
         }
     };
 
     const handleRemoveFromLibrary = async (book: SearchResult) => {
+        console.log('🗑️ ===== START REMOVING BOOK =====');
+        console.log('🗑️ Book data for removal:', {
+            existingBookId: book.existingBookId,
+            title: book.tytul,
+            isInUserLibrary: book.isInUserLibrary
+        });
+
         if (!book.existingBookId) {
             alert('❌ Nie można usunąć książki bez ID z bazy danych');
             return;
         }
 
-        setRemovingBook(book.googleBooksId || null);
+        // Utwórz unikalny klucz dla książki
+        const bookKey = book.existingBookId.toString();
+        setRemovingBooks(prev => new Set(prev).add(bookKey));
 
         try {
             console.log('🗑️ Removing book from library:', {
@@ -532,17 +727,27 @@ const SearchPage: React.FC = () => {
                 title: book.tytul
             });
 
-            const response = await api.delete(`/search/books/${book.existingBookId}/remove-from-library`);
+            // Użyj endpointu /books/:id zamiast /search/books/:bookId/remove-from-library
+            const response = await api.delete(`/books/${book.existingBookId}`);
 
             console.log('📨 Remove response:', response.data);
 
             if (response.data.success) {
                 // Odśwież wyniki wyszukiwania
-                setResults(prev => prev.map(b =>
-                    b.existingBookId === book.existingBookId
-                        ? { ...b, isInUserLibrary: false }
-                        : b
-                ));
+                setResults(prev => {
+                    const updatedResults = prev.map(b => {
+                        if (b.existingBookId === book.existingBookId) {
+                            return {
+                                ...b,
+                                isInUserLibrary: false
+                            };
+                        }
+                        return b;
+                    });
+
+                    // Filtruj duplikaty po aktualizacji
+                    return filterDuplicates(updatedResults);
+                });
 
                 alert('✅ ' + response.data.message);
             } else {
@@ -554,16 +759,26 @@ const SearchPage: React.FC = () => {
             let errorMessage = 'Nie udało się usunąć książki. Spróbuj ponownie.';
 
             if (err.response?.data) {
-                errorMessage = err.response.data.message || err.response.data.error;
+                console.error('Error response:', err.response.data);
+                errorMessage = err.response.data.message || err.response.data.error || errorMessage;
             } else if (err.request) {
+                console.error('No response received:', err.request);
                 errorMessage = 'Problem z połączeniem. Sprawdź internet.';
             } else {
-                errorMessage = err.message;
+                console.error('Error setting up request:', err.message);
+                errorMessage = err.message || 'Nieznany błąd';
             }
 
             alert('❌ ' + errorMessage);
         } finally {
-            setRemovingBook(null);
+            // Wyczyść stan usuwania
+            setRemovingBooks(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(bookKey);
+                return newSet;
+            });
+
+            console.log('🗑️ ===== END REMOVING BOOK =====');
         }
     };
 
@@ -572,9 +787,57 @@ const SearchPage: React.FC = () => {
     };
 
     const totalPages = Math.ceil(totalResults / RESULTS_PER_PAGE);
+
     const isAddingBook = (book: SearchResult) => {
-        const bookKey = book.googleBooksId || `local-${book.existingBookId}`;
+        const bookKey = book.googleBooksId || `local-${book.existingBookId || 'temp'}`;
         return addingBooks.has(bookKey);
+    };
+
+    // Funkcja sprawdzająca czy książka jest w trakcie usuwania
+    const isRemovingBook = (book: SearchResult) => {
+        const bookKey = book.existingBookId?.toString() || '';
+        return removingBooks.has(bookKey);
+    };
+
+    // Funkcja sprawdzająca czy opis jest zbyt długi i wymaga przycisku "rozwiń"
+    const isDescriptionLong = (description: string) => {
+        return description.length > 150;
+    };
+
+    // Funkcja do skracania opisu
+    const getShortDescription = (description: string) => {
+        if (description.length <= 150) return description;
+        return description.substring(0, 150) + '...';
+    };
+
+    // Funkcja do filtrowania duplikatów
+    const filterDuplicates = (books: SearchResult[]): SearchResult[] => {
+        const uniqueBooksMap = new Map<string, SearchResult>();
+
+        books.forEach((book) => {
+            const key = book.existingBookId
+                ? `id-${book.existingBookId}` // Użyj ID z bazy jeśli istnieje
+                : `isbn-${book.isbn || ''}-${book.tytul || ''}`; // Użyj kombinacji ISBN i tytułu
+
+            // Jeśli książka już jest w mapie, sprawdź którą preferować
+            if (uniqueBooksMap.has(key)) {
+                const existingBook = uniqueBooksMap.get(key)!;
+
+                // Preferuj książkę która jest już w bibliotece użytkownika
+                if (book.isInUserLibrary && !existingBook.isInUserLibrary) {
+                    uniqueBooksMap.set(key, book);
+                }
+                // Preferuj książkę z istniejącym ID (z naszej bazy)
+                else if (book.existingBookId && !existingBook.existingBookId) {
+                    uniqueBooksMap.set(key, book);
+                }
+            } else {
+                // Dodaj nową książkę do mapy
+                uniqueBooksMap.set(key, book);
+            }
+        });
+
+        return Array.from(uniqueBooksMap.values());
     };
 
     return (
@@ -645,15 +908,17 @@ const SearchPage: React.FC = () => {
                     <>
                         <ResultsInfo>
                             <ResultsCount>
-                                Znaleziono {totalResults} książek dla "{query}"
-                                {results.some(book => book.source === 'local') && ' (w tym książki z Twojej biblioteki)'}
+                                Znaleziono {results.length} książek dla "{query}"
                             </ResultsCount>
                         </ResultsInfo>
 
                         <BooksGrid>
-                            {results.map((book) => {
-                                const bookKey = book.googleBooksId || `local-${book.existingBookId}`;
+                            {results.map((book, index) => {
+                                const bookKey = book.googleBooksId || `local-${book.existingBookId || 'temp'}-${index}`;
                                 const isBeingAdded = isAddingBook(book);
+                                const isBeingRemoved = isRemovingBook(book);
+                                const isExpanded = expandedDescriptions.has(bookKey);
+                                const needsExpandButton = isDescriptionLong(book.opis);
 
                                 return (
                                     <BookCard key={bookKey}>
@@ -680,27 +945,31 @@ const SearchPage: React.FC = () => {
                                             }
                                         </BookAuthors>
 
-                                        <BookDescription>{book.opis}</BookDescription>
+                                        <DescriptionContainer>
+                                            <BookDescription $expanded={isExpanded}>
+                                                {isExpanded ? book.opis : getShortDescription(book.opis)}
+                                            </BookDescription>
+                                            {needsExpandButton && (
+                                                <ExpandButton onClick={() => toggleDescription(bookKey)}>
+                                                    {isExpanded ? 'Zwiń opis' : 'Rozwiń opis'}
+                                                </ExpandButton>
+                                            )}
+                                        </DescriptionContainer>
 
                                         <BookMeta>
-                                            <span>
-                                                {book.liczba_stron ? `${book.liczba_stron} str.` : 'Brak danych'}
-                                            </span>
-                                            <span>{book.data_wydania}</span>
-                                            {book.source === 'local' && (
-                                                <span style={{ color: '#4caf50', fontSize: '0.7rem' }}>
-                                                    📚 Lokalna
-                                                </span>
-                                            )}
+                      <span>
+                        {book.liczba_stron ? `${book.liczba_stron} str.` : 'Brak danych'}
+                      </span>
+                                            <span>{formatDate(book.data_wydania)}</span>
                                         </BookMeta>
 
                                         <ActionButtons>
                                             {book.isInUserLibrary ? (
                                                 <RemoveButton
                                                     onClick={() => handleRemoveFromLibrary(book)}
-                                                    disabled={removingBook === (book.googleBooksId || null)}
+                                                    disabled={isBeingRemoved}
                                                 >
-                                                    {removingBook === (book.googleBooksId || null) ? 'Usuwanie...' : 'Usuń z biblioteki'}
+                                                    {isBeingRemoved ? 'Usuwanie...' : 'Usuń z biblioteki'}
                                                 </RemoveButton>
                                             ) : (
                                                 <AddButton

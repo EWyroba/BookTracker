@@ -101,7 +101,7 @@ const searchLocalDatabase = async (query, userId, maxResults = 12, startIndex = 
                 gatunek: book.gatunek,
                 jezyk: book.jezyk,
                 url_okladki: book.url_okladki,
-                isInUserLibrary: !!book.status, // Jeśli ma status, jest w bibliotece
+                isInUserLibrary: !!book.status,
                 readingStatus: {
                     status: book.status,
                     ocena: book.ocena,
@@ -129,53 +129,6 @@ const searchLocalDatabase = async (query, userId, maxResults = 12, startIndex = 
     }
 };
 
-// Funkcja do budowania zaawansowanego zapytania
-const buildAdvancedQuery = (query) => {
-    const trimmedQuery = query.trim();
-
-    // Sprawdź czy zapytanie wygląda jak ISBN
-    const isbnRegex = /^(?:\d{10}|\d{13}|(?:\d{3}-)?\d{10}|(?:\d{3}-)?\d{13})$/;
-    if (isbnRegex.test(trimmedQuery.replace(/-/g, ''))) {
-        return `isbn:${trimmedQuery}`;
-    }
-
-    // Sprawdź czy zapytanie zawiera słowa kluczowe wskazujące na autora
-    const authorKeywords = ['autor:', 'author:', 'pisarz', 'writer'];
-    const hasAuthorKeyword = authorKeywords.some(keyword =>
-        trimmedQuery.toLowerCase().includes(keyword)
-    );
-
-    if (hasAuthorKeyword) {
-        const cleanQuery = trimmedQuery.replace(/autor:|author:|pisarz|writer/gi, '').trim();
-        return `inauthor:"${cleanQuery}"`;
-    }
-
-    // Sprawdź czy zapytanie zawiera słowa kluczowe wskazujące na gatunek
-    const genreKeywords = ['gatunek:', 'genre:', 'kategoria:', 'category:'];
-    const hasGenreKeyword = genreKeywords.some(keyword =>
-        trimmedQuery.toLowerCase().includes(keyword)
-    );
-
-    if (hasGenreKeyword) {
-        const cleanQuery = trimmedQuery.replace(/gatunek:|genre:|kategoria:|category:/gi, '').trim();
-        return `subject:"${cleanQuery}"`;
-    }
-
-    // Sprawdź czy zapytanie zawiera słowa kluczowe wskazujące na wydawnictwo
-    const publisherKeywords = ['wydawnictwo:', 'publisher:', 'wyd:'];
-    const hasPublisherKeyword = publisherKeywords.some(keyword =>
-        trimmedQuery.toLowerCase().includes(keyword)
-    );
-
-    if (hasPublisherKeyword) {
-        const cleanQuery = trimmedQuery.replace(/wydawnictwo:|publisher:|wyd:/gi, '').trim();
-        return `inpublisher:"${cleanQuery}"`;
-    }
-
-    // Domyślnie: szukaj we wszystkich polach
-    return trimmedQuery;
-};
-
 // Główna funkcja wyszukiwania
 router.get('/', authenticateToken, async (req, res) => {
     try {
@@ -191,7 +144,6 @@ router.get('/', authenticateToken, async (req, res) => {
         const cacheKey = `${q}-${maxResults}-${startIndex}-${searchType}-${searchSource}-${req.user.userId}`;
         const cached = searchCache.get(cacheKey);
 
-        // Sprawdź cache
         if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
             return res.json({
                 success: true,
@@ -199,15 +151,14 @@ router.get('/', authenticateToken, async (req, res) => {
             });
         }
 
-        console.log('Searching for:', q, 'source:', searchSource, 'user:', req.user.userId);
+        console.log('🔍 Searching for:', q, 'source:', searchSource, 'user:', req.user.userId);
 
         let googleResults = { books: [], totalResults: 0, hasMore: false };
         let localResults = { books: [], totalResults: 0, hasMore: false };
 
-        // Wyszukiwanie w Google Books
         if (searchSource === 'google' || searchSource === 'both') {
             try {
-                let searchQuery;
+                let searchQuery = q;
 
                 switch (searchType) {
                     case 'author':
@@ -226,7 +177,7 @@ router.get('/', authenticateToken, async (req, res) => {
                         searchQuery = `subject:"${q.trim()}"`;
                         break;
                     default:
-                        searchQuery = buildAdvancedQuery(q);
+                        searchQuery = q.trim();
                 }
 
                 const response = await axios.get('https://www.googleapis.com/books/v1/volumes', {
@@ -243,35 +194,32 @@ router.get('/', authenticateToken, async (req, res) => {
                 });
 
                 if (response.data.items) {
-                    // Filtruj książki - tylko te z kompletnymi danymi
                     const validBooks = response.data.items.filter(item =>
-                        item.volumeInfo && isValidBook(item.volumeInfo)
+                        item.volumeInfo && item.volumeInfo.title
                     );
 
-                    // Ogranicz do żądanej liczby wyników
                     const limitedBooks = validBooks.slice(0, parseInt(maxResults));
 
                     const books = await Promise.all(
                         limitedBooks.map(async (item) => {
                             const volumeInfo = item.volumeInfo;
 
-                            // Sprawdź czy książka już istnieje w naszej bazie
                             let existingBookId = null;
                             let isInUserLibrary = false;
 
                             try {
-                                const [existingBooks] = await db.promisePool.execute(
-                                    'SELECT id FROM ksiazki WHERE isbn = ? OR tytul = ? LIMIT 1',
-                                    [
-                                        volumeInfo.industryIdentifiers?.[0]?.identifier || '',
-                                        volumeInfo.title || ''
-                                    ]
-                                );
+                                const isbn = volumeInfo.industryIdentifiers?.find(id => id.type === 'ISBN_13')?.identifier ||
+                                    volumeInfo.industryIdentifiers?.find(id => id.type === 'ISBN_10')?.identifier || '';
 
-                                if (existingBooks.length > 0) {
-                                    existingBookId = existingBooks[0].id;
-                                    // Sprawdź czy użytkownik ma tę książkę w swojej bibliotece
-                                    isInUserLibrary = await checkIfInUserLibrary(existingBookId, req.user.userId);
+                                if (isbn) {
+                                    const [existingBooks] = await db.promisePool.execute(
+                                        'SELECT id FROM ksiazki WHERE isbn = ? LIMIT 1',
+                                        [isbn]
+                                    );
+                                    if (existingBooks.length > 0) {
+                                        existingBookId = existingBooks[0].id;
+                                        isInUserLibrary = await checkIfInUserLibrary(existingBookId, req.user.userId);
+                                    }
                                 }
                             } catch (dbError) {
                                 console.error('Database check error:', dbError);
@@ -282,8 +230,8 @@ router.get('/', authenticateToken, async (req, res) => {
                                 googleBooksId: item.id,
                                 existingBookId: existingBookId,
                                 isInUserLibrary: isInUserLibrary,
-                                tytul: volumeInfo.title,
-                                autorzy: volumeInfo.authors,
+                                tytul: volumeInfo.title || 'Brak tytułu',
+                                autorzy: volumeInfo.authors || ['Autor nieznany'],
                                 isbn: volumeInfo.industryIdentifiers?.find(id => id.type === 'ISBN_13')?.identifier ||
                                     volumeInfo.industryIdentifiers?.find(id => id.type === 'ISBN_10')?.identifier || '',
                                 opis: volumeInfo.description ?
@@ -291,10 +239,11 @@ router.get('/', authenticateToken, async (req, res) => {
                                     'Brak opisu',
                                 liczba_stron: volumeInfo.pageCount || null,
                                 data_wydania: volumeInfo.publishedDate || '',
-                                wydawnictwo: volumeInfo.publisher || '',
-                                gatunek: volumeInfo.categories?.[0] || '',
+                                wydawnictwo: volumeInfo.publisher || 'Nieznane wydawnictwo',
+                                gatunek: volumeInfo.categories?.[0] || 'Inne',
                                 jezyk: volumeInfo.language || 'pl',
-                                url_okladki: volumeInfo.imageLinks?.thumbnail || '',
+                                url_okladki: volumeInfo.imageLinks?.thumbnail ||
+                                    volumeInfo.imageLinks?.smallThumbnail || '',
                                 previewLink: volumeInfo.previewLink || '',
                                 rating: volumeInfo.averageRating || null,
                                 ratingsCount: volumeInfo.ratingsCount || 0,
@@ -322,7 +271,6 @@ router.get('/', authenticateToken, async (req, res) => {
             }
         }
 
-        // Wyszukiwanie w lokalnej bazie danych
         if (searchSource === 'local' || searchSource === 'both') {
             try {
                 localResults = await searchLocalDatabase(q, req.user.userId, maxResults, startIndex);
@@ -337,7 +285,6 @@ router.get('/', authenticateToken, async (req, res) => {
             }
         }
 
-        // Połącz wyniki w zależności od źródła
         let combinedBooks = [];
         let totalResults = 0;
 
@@ -348,7 +295,6 @@ router.get('/', authenticateToken, async (req, res) => {
             combinedBooks = localResults.books;
             totalResults = localResults.totalResults;
         } else {
-            // Oba źródła - najpierw książki z bazy, potem z Google
             combinedBooks = [...localResults.books, ...googleResults.books];
             totalResults = localResults.totalResults + googleResults.totalResults;
         }
@@ -366,7 +312,6 @@ router.get('/', authenticateToken, async (req, res) => {
             searchSource: searchSource
         };
 
-        // Zapisz w cache
         searchCache.set(cacheKey, {
             data: result,
             timestamp: Date.now()
@@ -384,13 +329,18 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 });
 
-// NOWA FUNKCJA: Dodaj książkę do bazy lokalnej i biblioteki użytkownika
+// POPRAWIONE DODAWANIE KSIĄŻKI
+// routes/search.js - poprawiona funkcja add-book
+
 router.post('/add-book', authenticateToken, async (req, res) => {
+    console.log('📥 =========== ADD-BOOK REQUEST START ===========');
+    console.log('📥 User ID:', req.user.userId);
+    console.log('📥 Request body:', req.body);
+
     const connection = await db.promisePool.getConnection();
 
     try {
         const {
-            // Dane książki
             title,
             authors,
             isbn,
@@ -401,19 +351,34 @@ router.post('/add-book', authenticateToken, async (req, res) => {
             genre,
             language,
             coverUrl,
-            // Identyfikatory
             googleBooksId,
             existingBookId
         } = req.body;
 
         const userId = req.user.userId;
 
-        console.log('📥 Add-book request received:', {
-            title: title,
-            existingBookId: existingBookId,
-            googleBooksId: googleBooksId,
-            userId: userId
+        console.log('📥 Parsed data:', {
+            title,
+            authors,
+            isbn,
+            googleBooksId,
+            existingBookId
         });
+
+        // WALIDACJA DANYCH
+        if (!title || title.trim() === '') {
+            return res.status(400).json({
+                success: false,
+                message: 'Tytuł książki jest wymagany'
+            });
+        }
+
+        if (!authors || !Array.isArray(authors) || authors.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Autor książki jest wymagany'
+            });
+        }
 
         await connection.beginTransaction();
 
@@ -421,118 +386,182 @@ router.post('/add-book', authenticateToken, async (req, res) => {
         let isNewBook = false;
         let isNewInLibrary = false;
 
-        // KROK 1: Sprawdź czy książka już istnieje w bazie
+        // KROK 1: SPRAWDŹ CZY KSIĄŻKA JUŻ ISTNIEJE W BAZIE
         if (!bookId) {
-            // Szukaj książki po ISBN
-            if (isbn) {
+            console.log('🔍 Checking if book exists in database...');
+
+            // Spróbuj znaleźć po ISBN
+            if (isbn && isbn.trim() !== '') {
                 const [booksByISBN] = await connection.execute(
                     'SELECT id FROM ksiazki WHERE isbn = ?',
-                    [isbn]
+                    [isbn.trim()]
                 );
                 if (booksByISBN.length > 0) {
                     bookId = booksByISBN[0].id;
+                    console.log(`✅ Found book by ISBN: ${isbn}, ID: ${bookId}`);
                 }
             }
 
-            // Jeśli nie znaleziono po ISBN, szukaj po tytule i pierwszym autorze
-            if (!bookId && title && authors && authors.length > 0) {
-                const [booksByTitle] = await connection.execute(
-                    `SELECT k.id FROM ksiazki k 
-                     LEFT JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id 
-                     LEFT JOIN autorzy a ON ka.autor_id = a.id 
-                     WHERE k.tytul = ? AND a.imie_nazwisko = ? 
-                     LIMIT 1`,
-                    [title, authors[0]]
-                );
-                if (booksByTitle.length > 0) {
-                    bookId = booksByTitle[0].id;
+            // Jeśli nie znaleziono po ISBN, spróbuj po tytule i pierwszym autorze
+            if (!bookId) {
+                const cleanTitle = title.trim();
+                const firstAuthor = authors[0]?.trim() || '';
+
+                if (cleanTitle && firstAuthor) {
+                    const [booksByTitle] = await connection.execute(
+                        `SELECT k.id 
+                         FROM ksiazki k 
+                         LEFT JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id 
+                         LEFT JOIN autorzy a ON ka.autor_id = a.id 
+                         WHERE k.tytul = ? AND a.imie_nazwisko = ? 
+                         LIMIT 1`,
+                        [cleanTitle, firstAuthor]
+                    );
+                    if (booksByTitle.length > 0) {
+                        bookId = booksByTitle[0].id;
+                        console.log(`✅ Found book by title and author: ${cleanTitle}, ID: ${bookId}`);
+                    }
                 }
             }
         }
 
-        // KROK 2: Jeśli książka nie istnieje, dodaj ją do bazy
+        // KROK 2: DODAJ KSIĄŻKĘ DO BAZY (JEŚLI NIE ISTNIEJE)
         if (!bookId) {
-            console.log('📚 Adding new book to database:', title);
+            console.log('📚 Adding new book to database...');
 
-            // Przygotuj dane do wstawienia
-            const bookData = [
-                title || 'Brak tytułu',
-                isbn || '',
-                description || 'Brak opisu',
-                pageCount || 0,
-                publishedDate ? publishedDate.substring(0, 10) : null,
-                publisher || 'Nieznane wydawnictwo',
-                genre || 'Inne',
-                language || 'pl',
-                coverUrl || ''
-            ];
+            // Przygotuj dane
+            const cleanTitle = title.trim();
+            const cleanIsbn = isbn ? isbn.trim() : '';
+            const cleanDescription = description || 'Brak opisu';
+            const cleanPageCount = pageCount || 0;
+            const cleanPublishedDate = publishedDate ? publishedDate.substring(0, 10) : null;
+            const cleanPublisher = publisher || 'Nieznane wydawnictwo';
+            const cleanGenre = genre || 'Inne';
+            const cleanLanguage = language || 'pl';
+            const cleanCoverUrl = coverUrl || '';
 
-            const [bookResult] = await connection.execute(
-                `INSERT INTO ksiazki 
-                 (tytul, isbn, opis, liczba_stron, data_wydania, wydawnictwo, gatunek, jezyk, url_okladki) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                bookData
-            );
-            bookId = bookResult.insertId;
-            isNewBook = true;
+            console.log('📚 Book data to insert:', {
+                title: cleanTitle,
+                isbn: cleanIsbn,
+                pageCount: cleanPageCount,
+                publishedDate: cleanPublishedDate
+            });
 
-            // Dodaj autorów
-            if (authors && authors.length > 0) {
+            try {
+                // Sprawdź czy jest wydawnictwo w bazie
+                let wydawnictwoId = null;
+
+                if (cleanPublisher && cleanPublisher.trim() !== '') {
+                    const [wydawnictwa] = await connection.execute(
+                        'SELECT id FROM wydawnictwa WHERE nazwa = ?',
+                        [cleanPublisher]
+                    );
+
+                    if (wydawnictwa.length > 0) {
+                        wydawnictwoId = wydawnictwa[0].id;
+                    } else {
+                        const [newWydawnictwo] = await connection.execute(
+                            'INSERT INTO wydawnictwa (nazwa) VALUES (?)',
+                            [cleanPublisher]
+                        );
+                        wydawnictwoId = newWydawnictwo.insertId;
+                    }
+                }
+
+                // Dodaj książkę
+                const [bookResult] = await connection.execute(
+                    `INSERT INTO ksiazki 
+                     (tytul, isbn, opis, liczba_stron, data_wydania, wydawnictwo_id, gatunek, jezyk, url_okladki, google_books_id) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        cleanTitle,
+                        cleanIsbn,
+                        cleanDescription,
+                        cleanPageCount,
+                        cleanPublishedDate,
+                        wydawnictwoId,
+                        cleanGenre,
+                        cleanLanguage,
+                        cleanCoverUrl,
+                        googleBooksId || null
+                    ]
+                );
+                bookId = bookResult.insertId;
+                isNewBook = true;
+                console.log(`✅ Book added to database with ID: ${bookId}`);
+
+                // DODAJ AUTORÓW
+                console.log(`👥 Adding ${authors.length} author(s)...`);
                 for (const authorName of authors) {
                     if (!authorName || authorName.trim() === '') continue;
 
-                    // Sprawdź czy autor już istnieje
-                    const [existingAuthors] = await connection.execute(
-                        'SELECT id FROM autorzy WHERE imie_nazwisko = ?',
-                        [authorName.trim()]
-                    );
+                    const cleanAuthorName = authorName.trim();
 
-                    let authorId;
-
-                    if (existingAuthors.length > 0) {
-                        authorId = existingAuthors[0].id;
-                    } else {
-                        const [authorResult] = await connection.execute(
-                            'INSERT INTO autorzy (imie_nazwisko) VALUES (?)',
-                            [authorName.trim()]
+                    try {
+                        // Sprawdź czy autor istnieje
+                        const [existingAuthors] = await connection.execute(
+                            'SELECT id FROM autorzy WHERE imie_nazwisko = ?',
+                            [cleanAuthorName]
                         );
-                        authorId = authorResult.insertId;
+
+                        let authorId;
+
+                        if (existingAuthors.length > 0) {
+                            authorId = existingAuthors[0].id;
+                            console.log(`✅ Author exists: ${cleanAuthorName}, ID: ${authorId}`);
+                        } else {
+                            // Dodaj nowego autora
+                            const [authorResult] = await connection.execute(
+                                'INSERT INTO autorzy (imie_nazwisko) VALUES (?)',
+                                [cleanAuthorName]
+                            );
+                            authorId = authorResult.insertId;
+                            console.log(`✅ Author added: ${cleanAuthorName}, ID: ${authorId}`);
+                        }
+
+                        // Połącz książkę z autorem
+                        await connection.execute(
+                            'INSERT IGNORE INTO ksiazka_autorzy (ksiazka_id, autor_id) VALUES (?, ?)',
+                            [bookId, authorId]
+                        );
+                        console.log(`✅ Linked book ${bookId} with author ${authorId}`);
+
+                    } catch (authorError) {
+                        console.error(`❌ Error processing author ${cleanAuthorName}:`, authorError);
+                        // Kontynuuj mimo błędu autora
                     }
-
-                    // Połącz książkę z autorem
-                    await connection.execute(
-                        'INSERT IGNORE INTO ksiazka_autorzy (ksiazka_id, autor_id) VALUES (?, ?)',
-                        [bookId, authorId]
-                    );
                 }
+            } catch (insertError) {
+                console.error('❌ Error inserting book:', insertError);
+                throw insertError;
             }
-
-            console.log('✅ Book added to database with ID:', bookId);
-        } else {
-            console.log('📖 Book already exists in database with ID:', bookId);
         }
 
-        // KROK 3: Sprawdź czy użytkownik już ma tę książkę w bibliotece
+        // KROK 3: DODAJ DO BIBLIOTEKI UŻYTKOWNIKA
+        console.log(`📚 Checking if book ${bookId} is in user ${userId}'s library...`);
+
+        // POPRAWIONE ZAPYTANIE - nie pobieraj 'id', sprawdź tylko czy istnieje
         const [existingStatus] = await connection.execute(
-            'SELECT id FROM statusy_czytania WHERE uzytkownik_id = ? AND ksiazka_id = ?',
+            'SELECT ksiazka_id FROM statusy_czytania WHERE uzytkownik_id = ? AND ksiazka_id = ?',
             [userId, bookId]
         );
 
         if (existingStatus.length === 0) {
-            // Dodaj książkę do biblioteki użytkownika
+            console.log(`📚 Adding book ${bookId} to user ${userId}'s library...`);
             await connection.execute(
                 'INSERT INTO statusy_czytania (uzytkownik_id, ksiazka_id, status) VALUES (?, ?, ?)',
                 [userId, bookId, 'chce_przeczytac']
             );
             isNewInLibrary = true;
-            console.log('📚 Book added to user library');
+            console.log(`✅ Book added to user library`);
         } else {
-            console.log('ℹ️ Book already in user library');
+            console.log(`ℹ️ Book already in user library`);
         }
 
         await connection.commit();
+        console.log('✅ Transaction committed successfully');
 
-        // Wyczyść cache wyszukiwania
+        // Wyczyść cache
         searchCache.clear();
 
         // Przygotuj odpowiedź
@@ -547,6 +576,12 @@ router.post('/add-book', authenticateToken, async (req, res) => {
             message = 'Książka już znajduje się w Twojej bibliotece';
         }
 
+        console.log('📤 Sending success response:', {
+            success: true,
+            bookId,
+            message
+        });
+
         res.status(201).json({
             success: true,
             message: message,
@@ -557,7 +592,9 @@ router.post('/add-book', authenticateToken, async (req, res) => {
 
     } catch (error) {
         await connection.rollback();
-        console.error('💥 Add-book error:', error);
+        console.error('💥 =========== ADD-BOOK ERROR ===========');
+        console.error('💥 Error:', error.message);
+        console.error('💥 Stack:', error.stack);
 
         let errorMessage = 'Błąd podczas dodawania książki';
         let statusCode = 500;
@@ -568,16 +605,27 @@ router.post('/add-book', authenticateToken, async (req, res) => {
         } else if (error.code === 'ER_NO_REFERENCED_ROW_2') {
             errorMessage = 'Błąd relacji w bazie danych';
             statusCode = 400;
+        } else if (error.code === 'ER_TRUNCATED_WRONG_VALUE') {
+            errorMessage = 'Nieprawidłowy format danych';
+            statusCode = 400;
+        } else if (error.code === 'ER_BAD_NULL_ERROR') {
+            errorMessage = 'Brak wymaganych danych';
+            statusCode = 400;
+        } else if (error.code === 'ER_DATA_TOO_LONG') {
+            errorMessage = 'Dane są zbyt długie';
+            statusCode = 400;
         }
 
         res.status(statusCode).json({
             success: false,
             message: errorMessage,
             error: error.message,
-            errorCode: error.code
+            errorCode: error.code,
+            sqlMessage: error.sqlMessage
         });
     } finally {
         connection.release();
+        console.log('🔚 =========== ADD-BOOK REQUEST END ===========');
     }
 });
 
@@ -594,7 +642,6 @@ router.delete('/books/:bookId/remove-from-library', authenticateToken, async (re
             });
         }
 
-        // Sprawdź czy książka jest w bibliotece użytkownika
         const [existingStatus] = await db.promisePool.execute(
             'SELECT id FROM statusy_czytania WHERE uzytkownik_id = ? AND ksiazka_id = ?',
             [userId, bookId]
@@ -607,13 +654,11 @@ router.delete('/books/:bookId/remove-from-library', authenticateToken, async (re
             });
         }
 
-        // Usuń status czytania
         await db.promisePool.execute(
             'DELETE FROM statusy_czytania WHERE uzytkownik_id = ? AND ksiazka_id = ?',
             [userId, bookId]
         );
 
-        // Wyczyść cache wyszukiwania
         searchCache.clear();
 
         res.json({
@@ -631,7 +676,7 @@ router.delete('/books/:bookId/remove-from-library', authenticateToken, async (re
     }
 });
 
-// Popularne wyszukiwania (sugestie)
+// Popularne wyszukiwania
 router.get('/suggestions', authenticateToken, async (req, res) => {
     const popularSearches = [
         'Harry Potter',

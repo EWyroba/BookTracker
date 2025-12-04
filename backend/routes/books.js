@@ -164,336 +164,6 @@ router.get('/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Dodaj nową książkę
-router.post('/', authenticateToken, async (req, res) => {
-    const connection = await db.promisePool.getConnection();
-
-    try {
-        const {
-            tytul,
-            autor,
-            isbn,
-            liczba_stron,
-            gatunek,
-            url_okladki,
-            wydawnictwo,
-            data_wydania,
-            jezyk,
-            opis
-        } = req.body;
-
-        const userId = req.user.userId;
-
-        if (!tytul || !tytul.trim()) {
-            return res.status(400).json({ message: 'Tytuł jest wymagany' });
-        }
-
-        if (!autor || !autor.trim()) {
-            return res.status(400).json({ message: 'Autor jest wymagany' });
-        }
-
-        if (!wydawnictwo || !wydawnictwo.trim()) {
-            return res.status(400).json({ message: 'Wydawnictwo jest wymagane' });
-        }
-
-        if (!isbn || !isbn.trim()) {
-            return res.status(400).json({ message: 'ISBN jest wymagany' });
-        }
-
-        const pages = parseInt(liczba_stron);
-        if (isNaN(pages) || pages <= 0) {
-            return res.status(400).json({ message: 'Liczba stron musi być poprawną liczbą większą niż 0' });
-        }
-
-        await connection.beginTransaction();
-
-        // Sprawdź czy książka już istnieje
-        let existingBookId = null;
-
-        if (isbn && isbn.trim()) {
-            const [booksByISBN] = await connection.execute(
-                `SELECT k.id
-                 FROM ksiazki k
-                 WHERE k.isbn = ?`,
-                [isbn.trim()]
-            );
-
-            if (booksByISBN.length > 0) {
-                existingBookId = booksByISBN[0].id;
-            }
-        }
-
-        if (!existingBookId) {
-            const [booksByTitleAuthor] = await connection.execute(
-                `SELECT k.id
-                 FROM ksiazki k
-                          JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id
-                          JOIN autorzy a ON ka.autor_id = a.id
-                 WHERE k.tytul = ? AND a.imie_nazwisko = ?`,
-                [tytul.trim(), autor.trim()]
-            );
-
-            if (booksByTitleAuthor.length > 0) {
-                existingBookId = booksByTitleAuthor[0].id;
-            }
-        }
-
-        if (existingBookId) {
-            const [existingStatus] = await connection.execute(
-                'SELECT id FROM statusy_czytania WHERE uzytkownik_id = ? AND ksiazka_id = ?',
-                [userId, existingBookId]
-            );
-
-            if (existingStatus.length === 0) {
-                await connection.execute(
-                    'INSERT INTO statusy_czytania (uzytkownik_id, ksiazka_id, status) VALUES (?, ?, ?)',
-                    [userId, existingBookId, 'chce_przeczytac']
-                );
-            }
-
-            await connection.commit();
-
-            return res.status(200).json({
-                message: 'Książka już istnieje w bazie. Dodano do Twojej biblioteki.',
-                bookId: existingBookId,
-                existingBook: true
-            });
-        }
-
-        // Znajdź lub utwórz wydawnictwo
-        let wydawnictwoId = null;
-        const [existingWydawnictwa] = await connection.execute(
-            'SELECT id FROM wydawnictwa WHERE nazwa = ?',
-            [wydawnictwo.trim()]
-        );
-
-        if (existingWydawnictwa.length > 0) {
-            wydawnictwoId = existingWydawnictwa[0].id;
-        } else {
-            const [newWydawnictwo] = await connection.execute(
-                'INSERT INTO wydawnictwa (nazwa) VALUES (?)',
-                [wydawnictwo.trim()]
-            );
-            wydawnictwoId = newWydawnictwo.insertId;
-        }
-
-        // Dodaj książkę
-        const [bookResult] = await connection.execute(
-            `INSERT INTO ksiazki
-             (tytul, isbn, liczba_stron, gatunek, url_okladki, wydawnictwo_id, data_wydania, jezyk, opis)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                tytul.trim(),
-                isbn.trim(),
-                pages,
-                gatunek || '',
-                url_okladki || '',
-                wydawnictwoId,
-                data_wydania || null,
-                jezyk || 'polski',
-                opis || ''
-            ]
-        );
-
-        const bookId = bookResult.insertId;
-
-        // Obsługa autora
-        if (autor && autor.trim()) {
-            const [existingAuthors] = await connection.execute(
-                'SELECT id FROM autorzy WHERE imie_nazwisko = ?',
-                [autor.trim()]
-            );
-
-            let authorId;
-            if (existingAuthors.length > 0) {
-                authorId = existingAuthors[0].id;
-            } else {
-                const [authorResult] = await connection.execute(
-                    'INSERT INTO autorzy (imie_nazwisko) VALUES (?)',
-                    [autor.trim()]
-                );
-                authorId = authorResult.insertId;
-            }
-
-            await connection.execute(
-                'INSERT INTO ksiazka_autorzy (ksiazka_id, autor_id) VALUES (?, ?)',
-                [bookId, authorId]
-            );
-        }
-
-        // Dodaj domyślny status
-        await connection.execute(
-            'INSERT INTO statusy_czytania (uzytkownik_id, ksiazka_id, status) VALUES (?, ?, ?)',
-            [userId, bookId, 'chce_przeczytac']
-        );
-
-        await connection.commit();
-
-        res.status(201).json({
-            message: 'Książka dodana pomyślnie',
-            bookId: bookId,
-            existingBook: false
-        });
-
-    } catch (error) {
-        await connection.rollback();
-        console.error('Add book error:', error);
-        res.status(500).json({ message: 'Błąd serwera', error: error.message });
-    } finally {
-        connection.release();
-    }
-});
-
-// Edytuj książkę
-router.put('/:id', authenticateToken, async (req, res) => {
-    const connection = await db.promisePool.getConnection();
-
-    try {
-        const bookId = req.params.id;
-        const userId = req.user.userId;
-        const {
-            tytul,
-            autor,
-            isbn,
-            opis,
-            liczba_stron,
-            gatunek,
-            url_okladki,
-            wydawnictwo,
-            data_wydania,
-            jezyk
-        } = req.body;
-
-        const [books] = await db.promisePool.execute(
-            'SELECT id FROM ksiazki WHERE id = ?',
-            [bookId]
-        );
-
-        if (books.length === 0) {
-            return res.status(404).json({ message: 'Książka nie znaleziona' });
-        }
-
-        if (!tytul || !tytul.trim()) {
-            return res.status(400).json({ message: 'Tytuł jest wymagany' });
-        }
-
-        if (!autor || !autor.trim()) {
-            return res.status(400).json({ message: 'Autor jest wymagany' });
-        }
-
-        if (!wydawnictwo || !wydawnictwo.trim()) {
-            return res.status(400).json({ message: 'Wydawnictwo jest wymagane' });
-        }
-
-        if (!isbn || !isbn.trim()) {
-            return res.status(400).json({ message: 'ISBN jest wymagany' });
-        }
-
-        if (liczba_stron && liczba_stron <= 0) {
-            return res.status(400).json({ message: 'Liczba stron musi być większa niż 0' });
-        }
-
-        await connection.beginTransaction();
-
-        // Znajdź lub utwórz wydawnictwo
-        let wydawnictwoId = null;
-        const [existingWydawnictwa] = await connection.execute(
-            'SELECT id FROM wydawnictwa WHERE nazwa = ?',
-            [wydawnictwo.trim()]
-        );
-
-        if (existingWydawnictwa.length > 0) {
-            wydawnictwoId = existingWydawnictwa[0].id;
-        } else {
-            const [newWydawnictwo] = await connection.execute(
-                'INSERT INTO wydawnictwa (nazwa) VALUES (?)',
-                [wydawnictwo.trim()]
-            );
-            wydawnictwoId = newWydawnictwo.insertId;
-        }
-
-        // Aktualizuj książkę
-        await connection.execute(
-            `UPDATE ksiazki
-             SET tytul = ?, isbn = ?, opis = ?, liczba_stron = ?, gatunek = ?,
-                 url_okladki = ?, wydawnictwo_id = ?, data_wydania = ?, jezyk = ?
-             WHERE id = ?`,
-            [
-                tytul.trim(),
-                isbn.trim(),
-                opis || '',
-                liczba_stron || null,
-                gatunek || '',
-                url_okladki || '',
-                wydawnictwoId,
-                data_wydania || null,
-                jezyk || 'polski',
-                bookId
-            ]
-        );
-
-        // Aktualizuj autora
-        if (autor && autor.trim()) {
-            await connection.execute(
-                'DELETE FROM ksiazka_autorzy WHERE ksiazka_id = ?',
-                [bookId]
-            );
-
-            const [existingAuthors] = await connection.execute(
-                'SELECT id FROM autorzy WHERE imie_nazwisko = ?',
-                [autor.trim()]
-            );
-
-            let authorId;
-            if (existingAuthors.length > 0) {
-                authorId = existingAuthors[0].id;
-            } else {
-                const [authorResult] = await connection.execute(
-                    'INSERT INTO autorzy (imie_nazwisko) VALUES (?)',
-                    [autor.trim()]
-                );
-                authorId = authorResult.insertId;
-            }
-
-            await connection.execute(
-                'INSERT INTO ksiazka_autorzy (ksiazka_id, autor_id) VALUES (?, ?)',
-                [bookId, authorId]
-            );
-        }
-
-        await connection.commit();
-
-        res.json({
-            message: 'Książka zaktualizowana pomyślnie',
-            bookId: bookId
-        });
-
-    } catch (error) {
-        await connection.rollback();
-        console.error('Update book error:', error);
-        res.status(500).json({
-            message: 'Błąd serwera podczas aktualizacji książki',
-            error: error.message
-        });
-    } finally {
-        connection.release();
-    }
-});
-
-// Lista wydawnictw
-router.get('/wydawnictwa/list', authenticateToken, async (req, res) => {
-    try {
-        const [wydawnictwa] = await db.promisePool.execute(
-            'SELECT id, nazwa FROM wydawnictwa ORDER BY nazwa'
-        );
-
-        res.json({ wydawnictwa });
-    } catch (error) {
-        console.error('Get wydawnictwa list error:', error);
-        res.status(500).json({ message: 'Błąd serwera', error: error.message });
-    }
-});
-
 // Aktualizuj status czytania
 router.post('/:id/status', authenticateToken, async (req, res) => {
     try {
@@ -644,139 +314,13 @@ router.delete('/notes/:noteId', authenticateToken, async (req, res) => {
     }
 });
 
-// Endpoint do pobrania dostępnych gatunków
-router.get('/genres/available', authenticateToken, async (req, res) => {
-    try {
-        const AVAILABLE_GENRES = [
-            'Fantastyka', 'Science Fiction', 'Kryminał', 'Thriller', 'Romans', 'Horror',
-            'Literatura piękna', 'Literatura popularnonaukowa', 'Biografia', 'Autobiografia',
-            'Historical', 'Przygodowa', 'Dramat', 'Poezja', 'Komedia', 'Young Adult',
-            'Dziecięca', 'Poradnik', 'Reportaż', 'Publicystyka', 'Klasyka', 'Obyczajowa',
-            'Sensacja', 'Fantasy', 'Paranormal', 'Postapokaliptyczna', 'Urban Fantasy',
-            'High Fantasy', 'Cyberpunk', 'Steampunk', 'Space Opera', 'Military SF',
-            'Hard SF', 'Kryminał policyjny', 'Kryminał sądowy', 'Noir', 'Thriller psychologiczny',
-            'Thriller polityczny', 'Thriller medyczny', 'Romans historyczny', 'Romans współczesny',
-            'Romans erotyczny', 'New Adult', 'Literatura faktu', 'Podróżnicza', 'Kucharska',
-            'Poradnik psychologiczny', 'Rozwój osobisty', 'Biznes', 'Inne'
-        ];
-
-        res.json({ genres: AVAILABLE_GENRES });
-    } catch (error) {
-        console.error('Get genres error:', error);
-        res.status(500).json({ message: 'Błąd serwera', error: error.message });
-    }
-});
-
-// Edytuj notatkę
-router.put('/notes/:noteId', authenticateToken, async (req, res) => {
-    try {
-        const noteId = req.params.noteId;
-        const userId = req.user.userId;
-        const { numer_strony, notatka, tekst_cytatu, czy_publiczna } = req.body;
-
-        const [notes] = await db.promisePool.execute(
-            'SELECT id FROM zakladki WHERE id = ? AND uzytkownik_id = ?',
-            [noteId, userId]
-        );
-
-        if (notes.length === 0) {
-            return res.status(404).json({ message: 'Notatka nie znaleziona lub brak uprawnień' });
-        }
-
-        if (!numer_strony || numer_strony < 0) {
-            return res.status(400).json({ message: 'Numer strony jest wymagany i musi być liczbą dodatnią' });
-        }
-
-        if (!notatka || !notatka.trim()) {
-            return res.status(400).json({ message: 'Notatka jest wymagana' });
-        }
-
-        await db.promisePool.execute(
-            `UPDATE zakladki
-             SET numer_strony = ?, notatka = ?, tekst_cytatu = ?, czy_publiczna = ?
-             WHERE id = ?`,
-            [numer_strony, notatka.trim(), tekst_cytatu || '', czy_publiczna || false, noteId]
-        );
-
-        res.json({
-            message: 'Notatka zaktualizowana pomyślnie',
-            noteId: noteId
-        });
-
-    } catch (error) {
-        console.error('Update note error:', error);
-        res.status(500).json({ message: 'Błąd serwera', error: error.message });
-    }
-});
-
-// Pobierz pojedynczą notatkę
-router.get('/notes/single/:noteId', authenticateToken, async (req, res) => {
-    try {
-        const noteId = req.params.noteId;
-        const userId = req.user.userId;
-
-        const [notes] = await db.promisePool.execute(
-            `SELECT z.*, k.tytul as ksiazka_tytul
-             FROM zakladki z
-                      JOIN ksiazki k ON z.ksiazka_id = k.id
-             WHERE z.id = ? AND z.uzytkownik_id = ?`,
-            [noteId, userId]
-        );
-
-        if (notes.length === 0) {
-            return res.status(404).json({ message: 'Notatka nie znaleziona' });
-        }
-
-        res.json({ note: notes[0] });
-
-    } catch (error) {
-        console.error('Get note error:', error);
-        res.status(500).json({ message: 'Błąd serwera', error: error.message });
-    }
-});
-
-// Usuwanie książki z biblioteki użytkownika
+// Usuń książkę z biblioteki użytkownika
 router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         const bookId = req.params.id;
         const userId = req.user.userId;
 
-        await db.promisePool.execute(
-            'DELETE FROM statusy_czytania WHERE uzytkownik_id = ? AND ksiazka_id = ?',
-            [userId, bookId]
-        );
-
-        await db.promisePool.execute(
-            'DELETE FROM zakladki WHERE uzytkownik_id = ? AND ksiazka_id = ?',
-            [userId, bookId]
-        );
-
-        await db.promisePool.execute(
-            'DELETE FROM ksiazki_na_polkach WHERE ksiazka_id = ? AND polka_id IN (SELECT id FROM polki WHERE uzytkownik_id = ?)',
-            [bookId, userId]
-        );
-
-        res.json({
-            message: 'Książka usunięta z Twojej biblioteki',
-            success: true
-        });
-
-    } catch (error) {
-        console.error('Delete book error:', error);
-        res.status(500).json({
-            message: 'Błąd serwera podczas usuwania książki',
-            error: error.message
-        });
-    }
-});
-
-// Usuń książkę z biblioteki (dla wyszukiwarki)
-router.delete('/:id/remove-from-library', authenticateToken, async (req, res) => {
-    try {
-        const bookId = req.params.id;
-        const userId = req.user.userId;
-
-        console.log('🗑️ Removing book from library:', { bookId, userId });
+        console.log(`🗑️ Removing book ${bookId} from user ${userId}'s library`);
 
         // Usuń tylko status czytania (książka pozostaje w bazie)
         await db.promisePool.execute(
@@ -802,11 +346,53 @@ router.delete('/:id/remove-from-library', authenticateToken, async (req, res) =>
         });
 
     } catch (error) {
-        console.error('Remove from library error:', error);
+        console.error('Delete book error:', error);
         res.status(500).json({
-            message: 'Błąd podczas usuwania książki z biblioteki',
+            message: 'Błąd serwera podczas usuwania książki',
             error: error.message
         });
+    }
+});
+
+// Pobierz statystyki czytania
+router.get('/:id/stats', authenticateToken, async (req, res) => {
+    try {
+        const bookId = req.params.id;
+        const userId = req.user.userId;
+
+        const [book] = await db.promisePool.execute(
+            'SELECT liczba_stron FROM ksiazki WHERE id = ?',
+            [bookId]
+        );
+
+        const [status] = await db.promisePool.execute(
+            'SELECT * FROM statusy_czytania WHERE uzytkownik_id = ? AND ksiazka_id = ?',
+            [userId, bookId]
+        );
+
+        const [notesCount] = await db.promisePool.execute(
+            'SELECT COUNT(*) as count FROM zakladki WHERE uzytkownik_id = ? AND ksiazka_id = ?',
+            [userId, bookId]
+        );
+
+        const pages = book[0]?.liczba_stron || 0;
+        const currentPage = status[0]?.aktualna_strona || 0;
+        const progress = pages > 0 ? Math.round((currentPage / pages) * 100) : 0;
+
+        res.json({
+            totalPages: pages,
+            currentPage: currentPage,
+            progress: progress,
+            notesCount: notesCount[0]?.count || 0,
+            status: status[0]?.status || 'nie_przeczytana',
+            rating: status[0]?.ocena || null,
+            startDate: status[0]?.data_rozpoczecia,
+            endDate: status[0]?.data_zakonczenia
+        });
+
+    } catch (error) {
+        console.error('Get book stats error:', error);
+        res.status(500).json({ message: 'Błąd serwera', error: error.message });
     }
 });
 
