@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
@@ -6,18 +5,26 @@ import Icon from '../common/Icon';
 import { Book } from '../../types';
 import api from '../../services/api';
 
+// INTERFACE DEFINITIONS
+// INTERFACE DEFINITIONS
 interface ProgressFillProps {
-    $progress: number;
+    progress: number;
 }
 
 interface StatusBadgeProps {
-    $status: string;
+    status: string;
 }
 
 interface StatusButtonProps {
-    $active?: boolean;
+    active?: boolean;
 }
 
+interface StarProps {
+    active: boolean;
+    disabled?: boolean;
+}
+
+// STYLED COMPONENTS
 const Card = styled.div`
   background: ${props => props.theme.colors.surface};
   border-radius: ${props => props.theme.borderRadius.lg};
@@ -72,6 +79,8 @@ const BookMeta = styled.div`
   justify-content: space-between;
   align-items: center;
   margin-bottom: ${props => props.theme.spacing.md};
+  flex-wrap: wrap;
+  gap: ${props => props.theme.spacing.sm};
 `;
 
 const Rating = styled.div`
@@ -80,6 +89,24 @@ const Rating = styled.div`
   gap: ${props => props.theme.spacing.xs};
   color: ${props => props.theme.colors.warning};
   font-size: 0.9rem;
+`;
+
+const AverageRating = styled.div`
+  display: flex;
+  align-items: center;
+  gap: ${props => props.theme.spacing.xs};
+  color: ${props => props.theme.colors.success};
+  font-size: 0.8rem;
+  background: ${props => props.theme.colors.surfaceLight};
+  padding: ${props => props.theme.spacing.xs} ${props => props.theme.spacing.sm};
+  border-radius: ${props => props.theme.borderRadius.sm};
+  border: 1px solid ${props => props.theme.colors.border};
+`;
+
+const RatingCount = styled.span`
+  font-size: 0.7rem;
+  color: ${props => props.theme.colors.textSecondary};
+  margin-left: ${props => props.theme.spacing.xs};
 `;
 
 const Pages = styled.div`
@@ -100,7 +127,7 @@ const StatusBadge = styled.div<StatusBadgeProps>`
   font-weight: 600;
   text-transform: uppercase;
   background: ${props => {
-    switch (props.$status) {
+    switch (props.status) {
       case 'przeczytana':
         return props.theme.colors.success;
       case 'aktualnie_czytam':
@@ -137,7 +164,7 @@ const ProgressBar = styled.div`
 const ProgressFill = styled.div<ProgressFillProps>`
   height: 100%;
   background: ${props => props.theme.colors.primary};
-  width: ${props => props.$progress}%;
+  width: ${props => props.progress}%;
   transition: width 0.3s ease;
 `;
 
@@ -150,9 +177,9 @@ const StatusButtons = styled.div`
 
 const StatusButton = styled.button<StatusButtonProps>`
   padding: ${props => props.theme.spacing.xs} ${props => props.theme.spacing.sm};
-  border: 1px solid ${props => props.$active ? props.theme.colors.primary : props.theme.colors.border};
-  background: ${props => props.$active ? props.theme.colors.primary : 'transparent'};
-  color: ${props => props.$active ? 'white' : props.theme.colors.textSecondary};
+  border: 1px solid ${props => props.active ? props.theme.colors.primary : props.theme.colors.border};
+  background: ${props => props.active ? props.theme.colors.primary : 'transparent'};
+  color: ${props => props.active ? 'white' : props.theme.colors.textSecondary};
   border-radius: ${props => props.theme.borderRadius.sm};
   font-size: 0.7rem;
   cursor: pointer;
@@ -181,12 +208,66 @@ const RemoveButton = styled.button`
   transition: all 0.2s ease;
   margin-top: ${props => props.theme.spacing.sm};
 
-
+  &:hover:not(:disabled) {
+    background: ${props => '#bd2130'};
+  }
 
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
+`;
+
+const RatingSection = styled.div`
+  margin-top: ${props => props.theme.spacing.md};
+  padding: ${props => props.theme.spacing.sm};
+  background: ${props => props.theme.colors.surfaceLight};
+  border-radius: ${props => props.theme.borderRadius.sm};
+  border: 1px solid ${props => props.theme.colors.border};
+`;
+
+const RatingLabel = styled.div`
+  font-size: 0.8rem;
+  color: ${props => props.theme.colors.textSecondary};
+  margin-bottom: ${props => props.theme.spacing.xs};
+  display: flex;
+  align-items: center;
+  gap: ${props => props.theme.spacing.xs};
+`;
+
+const RatingStars = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+`;
+
+const Star = styled.button<StarProps>`
+  background: none;
+  border: none;
+  color: ${props => props.active ? props.theme.colors.warning : props.theme.colors.textMuted};
+  cursor: ${props => props.disabled ? 'default' : 'pointer'};
+  padding: 2px;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover:not(:disabled) {
+    color: ${props => props.theme.colors.warning};
+    transform: scale(1.2);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+  }
+`;
+
+const LoadingText = styled.div`
+  font-size: 0.7rem;
+  color: ${props => props.theme.colors.textSecondary};
+  margin-top: ${props => props.theme.spacing.xs};
+  text-align: center;
 `;
 
 interface BookCardProps {
@@ -197,7 +278,11 @@ interface BookCardProps {
 
 const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange, onRemoveFromLibrary }) => {
     const [updating, setUpdating] = useState(false);
+    const [ratingBook, setRatingBook] = useState(false);
+    const [rating, setRating] = useState<number | null>(book.ocena || null);
+    const [hoverRating, setHoverRating] = useState<number | null>(null);
     const [removing, setRemoving] = useState(false);
+
     const progress = book.aktualna_strona && book.liczba_stron
         ? Math.round((book.aktualna_strona / book.liczba_stron) * 100)
         : 0;
@@ -214,6 +299,23 @@ const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange, onRemoveFromL
             console.error('Error updating status:', error);
         } finally {
             setUpdating(false);
+        }
+    };
+
+    const handleRatingSubmit = async () => {
+        if (!rating) return;
+
+        setRatingBook(true);
+        try {
+            await api.post(`/books/${book.id}/rating`, {
+                ocena: rating,
+                recenzja: ''
+            });
+            onStatusChange();
+        } catch (error) {
+            console.error('Error updating rating:', error);
+        } finally {
+            setRatingBook(false);
         }
     };
 
@@ -253,7 +355,7 @@ const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange, onRemoveFromL
     return (
         <Card>
             {book.status && (
-                <StatusBadge $status={book.status}>
+                <StatusBadge status={book.status}>
                     {book.status === 'przeczytana' && 'Przeczytana'}
                     {book.status === 'aktualnie_czytam' && 'W trakcie'}
                     {book.status === 'chce_przeczytac' && 'Planowana'}
@@ -273,11 +375,24 @@ const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange, onRemoveFromL
                 <BookAuthor>{formatAuthors(book.autorzy)}</BookAuthor>
 
                 <BookMeta>
-                    {book.ocena && (
+                    {book.ocena ? (
                         <Rating>
                             <Icon name="FiStar" />
-                            <span>{book.ocena}</span>
+                            <span>Twoja ocena: {book.ocena}/5</span>
                         </Rating>
+                    ) : (
+                        <Rating>
+                            <Icon name="FiStar" />
+                            <span>Nie ocenione</span>
+                        </Rating>
+                    )}
+
+                    {(book.srednia_ocena && parseFloat(book.srednia_ocena) > 0) && (
+                        <AverageRating>
+                            <Icon name="FiTrendingUp" />
+                            <span>{book.srednia_ocena}</span>
+                            <RatingCount>({book.liczba_ocen || 0})</RatingCount>
+                        </AverageRating>
                     )}
 
                     {book.liczba_stron && (
@@ -288,25 +403,56 @@ const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange, onRemoveFromL
                     )}
                 </BookMeta>
 
+                {/*/!* Rating Stars *!/*/}
+                {/*{book.status === 'przeczytana' && (*/}
+                {/*    <div>*/}
+                {/*        <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '4px' }}>*/}
+                {/*            Oceń książkę:*/}
+                {/*        </div>*/}
+                {/*        <RatingStars>*/}
+                {/*            {[1, 2, 3, 4, 5].map((star) => (*/}
+                {/*                <Star*/}
+                {/*                    key={star}*/}
+                {/*                    active={(hoverRating || rating || 0) >= star}*/}
+                {/*                    disabled={ratingBook}*/}
+                {/*                    onClick={() => {*/}
+                {/*                        setRating(star);*/}
+                {/*                        setTimeout(handleRatingSubmit, 300);*/}
+                {/*                    }}*/}
+                {/*                    onMouseEnter={() => setHoverRating(star)}*/}
+                {/*                    onMouseLeave={() => setHoverRating(null)}*/}
+                {/*                >*/}
+                {/*                    <Icon name="FiStar" />*/}
+                {/*                </Star>*/}
+                {/*            ))}*/}
+                {/*        </RatingStars>*/}
+                {/*        {ratingBook && (*/}
+                {/*            <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '4px' }}>*/}
+                {/*                Zapisuję ocenę...*/}
+                {/*            </div>*/}
+                {/*        )}*/}
+                {/*    </div>*/}
+                {/*)}*/}
+
                 <StatusButtons>
                     <StatusButton
                         onClick={() => handleStatusChange('chce_przeczytac')}
                         disabled={updating}
-                        $active={book.status === 'chce_przeczytac'}
+                        active={book.status === 'chce_przeczytac'}
                     >
                         Chcę przeczytać
                     </StatusButton>
                     <StatusButton
                         onClick={() => handleStatusChange('aktualnie_czytam')}
                         disabled={updating}
-                        $active={book.status === 'aktualnie_czytam'}
+                        active={book.status === 'aktualnie_czytam'}
                     >
                         Czytam
                     </StatusButton>
                     <StatusButton
                         onClick={() => handleStatusChange('przeczytana')}
                         disabled={updating}
-                        $active={book.status === 'przeczytana'}
+                        active={book.status === 'przeczytana'}
                     >
                         Przeczytana
                     </StatusButton>
@@ -329,7 +475,7 @@ const BookCard: React.FC<BookCardProps> = ({ book, onStatusChange, onRemoveFromL
                         <span>{progress}%</span>
                     </ProgressInfo>
                     <ProgressBar>
-                        <ProgressFill $progress={progress} />
+                        <ProgressFill progress={progress} />
                     </ProgressBar>
                 </ProgressSection>
             )}

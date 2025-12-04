@@ -9,23 +9,44 @@ export interface User {
 }
 
 export interface Book {
-    id: number;
+    id: string;
     tytul: string;
+    autorzy?: string[] | string;
     autor?: string;
     isbn?: string;
     opis?: string;
-    url_okladki?: string;
     liczba_stron?: number;
     data_wydania?: string;
-    wydawnictwo_id?: number;
-    seria_id?: number;
-    numer_w_serii?: number;
     gatunek?: string;
     jezyk?: string;
-    autorzy?: string[];
+    url_okladki?: string;
+    wydawnictwo?: string;
     status?: string;
     aktualna_strona?: number;
     ocena?: number;
+    recenzja?: string;
+    data_rozpoczecia?: string;
+    data_zakonczenia?: string;
+    postep?: number;
+    srednia_ocena?: string;
+    liczba_ocen?: number;
+    notatki?: any[];
+    statystyki?: {
+        liczba_notatek: number;
+        ostatnia_strona_z_notatka: number;
+    };
+    source?: 'google' | 'local';
+    existingBookId?: number | null;
+    googleBooksId?: string | null;
+    isInUserLibrary?: boolean;
+    readingStatus?: {
+        status: string;
+        ocena: number | null;
+        aktualna_strona: number;
+        postep: number;
+        data_rozpoczecia: string | null;
+        data_zakonczenia: string | null;
+    };
 }
 
 export interface ReadingStatus {

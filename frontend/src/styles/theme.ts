@@ -12,7 +12,8 @@ export const theme = {
         border: '#333333',
         success: '#4caf50',
         warning: '#ff9800',
-        error: '#f44336'
+        error: '#f44336',
+        errorDark: '#bd2130'
     },
     breakpoints: {
         mobile: '768px',

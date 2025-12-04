@@ -33,6 +33,30 @@ const checkIfInUserLibrary = async (bookId, userId) => {
     }
 };
 
+// Funkcja do pobierania średniej oceny z bazy dla książki
+const getBookRatingStats = async (bookId) => {
+    try {
+        const [ratingStats] = await db.promisePool.execute(`
+            SELECT 
+                COALESCE(AVG(ocena), 0) as srednia_ocena,
+                COUNT(DISTINCT CASE WHEN ocena IS NOT NULL THEN uzytkownik_id END) as liczba_ocen
+            FROM statusy_czytania 
+            WHERE ksiazka_id = ? AND ocena IS NOT NULL
+        `, [bookId]);
+
+        return {
+            srednia_ocena: parseFloat(ratingStats[0]?.srednia_ocena || 0).toFixed(1),
+            liczba_ocen: ratingStats[0]?.liczba_ocen || 0
+        };
+    } catch (error) {
+        console.error('Error fetching book rating stats:', error);
+        return {
+            srednia_ocena: '0.0',
+            liczba_ocen: 0
+        };
+    }
+};
+
 // Funkcja do wyszukiwania książek w lokalnej bazie danych
 const searchLocalDatabase = async (query, userId, maxResults = 12, startIndex = 0) => {
     try {
@@ -51,14 +75,17 @@ const searchLocalDatabase = async (query, userId, maxResults = 12, startIndex = 
                  k.url_okladki,
                  GROUP_CONCAT(DISTINCT a.imie_nazwisko) as autorzy,
                  s.status,
-                 s.ocena,
+                 s.ocena as user_rating,
                  s.aktualna_strona,
                  s.data_rozpoczecia,
-                 s.data_zakonczenia
+                 s.data_zakonczenia,
+                 COALESCE(AVG(s2.ocena), 0) as srednia_ocena,
+                 COUNT(DISTINCT s2.ocena) as liczba_ocen
              FROM ksiazki k
                       LEFT JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id
                       LEFT JOIN autorzy a ON ka.autor_id = a.id
                       LEFT JOIN statusy_czytania s ON k.id = s.ksiazka_id AND s.uzytkownik_id = ?
+                      LEFT JOIN statusy_czytania s2 ON k.id = s2.ksiazka_id AND s2.ocena IS NOT NULL
              WHERE k.tytul LIKE ?
                 OR a.imie_nazwisko LIKE ?
                 OR k.gatunek LIKE ?
@@ -102,9 +129,11 @@ const searchLocalDatabase = async (query, userId, maxResults = 12, startIndex = 
                 jezyk: book.jezyk,
                 url_okladki: book.url_okladki,
                 isInUserLibrary: !!book.status,
+                srednia_ocena: parseFloat(book.srednia_ocena || 0).toFixed(1),
+                liczba_ocen: book.liczba_ocen || 0,
                 readingStatus: {
                     status: book.status,
-                    ocena: book.ocena,
+                    ocena: book.user_rating,
                     aktualna_strona: book.aktualna_strona,
                     postep: postep,
                     data_rozpoczecia: book.data_rozpoczecia,
@@ -126,6 +155,38 @@ const searchLocalDatabase = async (query, userId, maxResults = 12, startIndex = 
             hasMore: false,
             error: error.message
         };
+    }
+};
+
+// Funkcja do pobierania statystyk ocen dla wielu książek
+const getBooksRatingStatsBatch = async (bookIds) => {
+    try {
+        if (bookIds.length === 0) {
+            return {};
+        }
+
+        const [ratingStats] = await db.promisePool.execute(`
+            SELECT 
+                ksiazka_id,
+                COALESCE(AVG(ocena), 0) as srednia_ocena,
+                COUNT(DISTINCT CASE WHEN ocena IS NOT NULL THEN uzytkownik_id END) as liczba_ocen
+            FROM statusy_czytania 
+            WHERE ksiazka_id IN (${bookIds.join(',')}) AND ocena IS NOT NULL
+            GROUP BY ksiazka_id
+        `);
+
+        const ratingMap = {};
+        ratingStats.forEach(stat => {
+            ratingMap[stat.ksiazka_id] = {
+                srednia_ocena: parseFloat(stat.srednia_ocena || 0).toFixed(1),
+                liczba_ocen: stat.liczba_ocen || 0
+            };
+        });
+
+        return ratingMap;
+    } catch (error) {
+        console.error('Error fetching batch rating stats:', error);
+        return {};
     }
 };
 
@@ -156,6 +217,7 @@ router.get('/', authenticateToken, async (req, res) => {
         let googleResults = { books: [], totalResults: 0, hasMore: false };
         let localResults = { books: [], totalResults: 0, hasMore: false };
 
+        // WYSZUKIWANIE W GOOGLE BOOKS
         if (searchSource === 'google' || searchSource === 'both') {
             try {
                 let searchQuery = q;
@@ -200,12 +262,17 @@ router.get('/', authenticateToken, async (req, res) => {
 
                     const limitedBooks = validBooks.slice(0, parseInt(maxResults));
 
+                    // Zbierz ID książek które istnieją w naszej bazie
+                    const existingBookIds = [];
+
                     const books = await Promise.all(
                         limitedBooks.map(async (item) => {
                             const volumeInfo = item.volumeInfo;
 
                             let existingBookId = null;
                             let isInUserLibrary = false;
+                            let srednia_ocena = '0.0';
+                            let liczba_ocen = 0;
 
                             try {
                                 const isbn = volumeInfo.industryIdentifiers?.find(id => id.type === 'ISBN_13')?.identifier ||
@@ -219,6 +286,13 @@ router.get('/', authenticateToken, async (req, res) => {
                                     if (existingBooks.length > 0) {
                                         existingBookId = existingBooks[0].id;
                                         isInUserLibrary = await checkIfInUserLibrary(existingBookId, req.user.userId);
+
+                                        // Pobierz statystyki ocen z naszej bazy
+                                        const ratingStats = await getBookRatingStats(existingBookId);
+                                        srednia_ocena = ratingStats.srednia_ocena;
+                                        liczba_ocen = ratingStats.liczba_ocen;
+
+                                        existingBookIds.push(existingBookId);
                                     }
                                 }
                             } catch (dbError) {
@@ -247,6 +321,9 @@ router.get('/', authenticateToken, async (req, res) => {
                                 previewLink: volumeInfo.previewLink || '',
                                 rating: volumeInfo.averageRating || null,
                                 ratingsCount: volumeInfo.ratingsCount || 0,
+                                // Użyj oceny z Google tylko jeśli nie mamy własnej
+                                srednia_ocena: srednia_ocena !== '0.0' ? srednia_ocena : (volumeInfo.averageRating || '0.0'),
+                                liczba_ocen: liczba_ocen > 0 ? liczba_ocen : (volumeInfo.ratingsCount || 0),
                                 searchType: searchType
                             };
                         })
@@ -271,6 +348,7 @@ router.get('/', authenticateToken, async (req, res) => {
             }
         }
 
+        // WYSZUKIWANIE W LOKALNEJ BAZIE DANYCH
         if (searchSource === 'local' || searchSource === 'both') {
             try {
                 localResults = await searchLocalDatabase(q, req.user.userId, maxResults, startIndex);
@@ -285,6 +363,7 @@ router.get('/', authenticateToken, async (req, res) => {
             }
         }
 
+        // POŁĄCZ WYNIKI
         let combinedBooks = [];
         let totalResults = 0;
 
@@ -330,8 +409,6 @@ router.get('/', authenticateToken, async (req, res) => {
 });
 
 // POPRAWIONE DODAWANIE KSIĄŻKI
-// routes/search.js - poprawiona funkcja add-book
-
 router.post('/add-book', authenticateToken, async (req, res) => {
     console.log('📥 =========== ADD-BOOK REQUEST START ===========');
     console.log('📥 User ID:', req.user.userId);
@@ -540,7 +617,6 @@ router.post('/add-book', authenticateToken, async (req, res) => {
         // KROK 3: DODAJ DO BIBLIOTEKI UŻYTKOWNIKA
         console.log(`📚 Checking if book ${bookId} is in user ${userId}'s library...`);
 
-        // POPRAWIONE ZAPYTANIE - nie pobieraj 'id', sprawdź tylko czy istnieje
         const [existingStatus] = await connection.execute(
             'SELECT ksiazka_id FROM statusy_czytania WHERE uzytkownik_id = ? AND ksiazka_id = ?',
             [userId, bookId]

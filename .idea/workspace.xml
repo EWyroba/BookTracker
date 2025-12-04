@@ -5,12 +5,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="858bbc07-cbea-49dc-bb6d-0295d872c757" name="Changes" comment=":)">
+      <change afterPath="$PROJECT_DIR$/.idea/sqldialects.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/routes/books.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routes/books.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/backend/routes/search.js" beforeDir="false" afterPath="$PROJECT_DIR$/backend/routes/search.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database/booktracker.sql" beforeDir="false" afterPath="$PROJECT_DIR$/database/booktracker.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/books/BookCard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/books/BookCard.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/books/BookDetailsPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/books/BookDetailsPage.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/frontend/src/components/search/SearchPage.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/search/SearchPage.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/frontend/src/services/api.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/services/api.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/styles/theme.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/styles/theme.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/types/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/types/index.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -43,7 +46,7 @@
     <dismissed value="$PROJECT_DIR$/frontend/package.json" />
   </component>
   <component name="ProblemsViewState">
-    <option name="selectedTabId" value="CurrentFile" />
+    <option name="selectedTabId" value="ProjectErrors" />
   </component>
   <component name="ProjectColorInfo">{
   &quot;customColor&quot;: &quot;&quot;,
@@ -63,7 +66,7 @@
     "RunOnceActivity.OpenProjectViewOnStart": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "WebServerToolWindowFactoryState": "false",
-    "git-widget-placeholder": "search",
+    "git-widget-placeholder": "oceny",
     "last_opened_file_path": "D:/sem7/TI/kolokwium",
     "list.type.of.created.stylesheet": "CSS",
     "node.js.detected.package.eslint": "true",
@@ -80,7 +83,7 @@
       <recent name="D:\BookTracker\backend" />
     </key>
   </component>
-  <component name="RunManager" selected="npm.frontend">
+  <component name="RunManager" selected="npm.backend">
     <configuration name="backend" type="js.build_tools.npm">
       <package-json value="$PROJECT_DIR$/backend/package.json" />
       <command value="run" />
@@ -144,6 +147,17 @@
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
   <component name="VcsManagerConfiguration">
     <option name="ADD_EXTERNAL_FILES_SILENTLY" value="true" />

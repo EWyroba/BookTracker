@@ -17,20 +17,26 @@ router.get('/', authenticateToken, async (req, res) => {
                 s.ocena,
                 s.data_rozpoczecia,
                 s.data_zakonczenia,
-                GROUP_CONCAT(DISTINCT a.imie_nazwisko) as autorzy
+                s.recenzja,
+                GROUP_CONCAT(DISTINCT a.imie_nazwisko) as autorzy,
+                COALESCE(AVG(s2.ocena), 0) as srednia_ocena,
+                COUNT(DISTINCT s2.ocena) as liczba_ocen
             FROM ksiazki k
                      LEFT JOIN statusy_czytania s ON k.id = s.ksiazka_id AND s.uzytkownik_id = ?
                      LEFT JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id
                      LEFT JOIN autorzy a ON ka.autor_id = a.id
+                     LEFT JOIN statusy_czytania s2 ON k.id = s2.ksiazka_id AND s2.ocena IS NOT NULL
             WHERE s.uzytkownik_id = ?
-            GROUP BY k.id, s.status, s.aktualna_strona, s.ocena, s.data_rozpoczecia, s.data_zakonczenia
+            GROUP BY k.id, s.status, s.aktualna_strona, s.ocena, s.recenzja, s.data_rozpoczecia, s.data_zakonczenia
             ORDER BY k.id DESC
         `, [userId, userId]);
 
         const formattedBooks = books.map(book => ({
             ...book,
             autorzy: book.autorzy ? book.autorzy.split(',') : [],
-            autor: book.autorzy ? book.autorzy.split(',')[0] : 'Autor nieznany'
+            autor: book.autorzy ? book.autorzy.split(',')[0] : 'Autor nieznany',
+            srednia_ocena: parseFloat(book.srednia_ocena).toFixed(1),
+            liczba_ocen: book.liczba_ocen
         }));
 
         res.json({ books: formattedBooks });
@@ -96,6 +102,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
                 data_rozpoczecia: null,
                 data_zakonczenia: null,
                 postep: 0,
+                srednia_ocena: null,
+                liczba_ocen: 0,
                 notatki: [],
                 statystyki: {
                     liczba_notatek: 0,
@@ -111,11 +119,14 @@ router.get('/:id', authenticateToken, async (req, res) => {
             SELECT
                 k.*,
                 w.nazwa as wydawnictwo_nazwa,
-                GROUP_CONCAT(DISTINCT a.imie_nazwisko) as autorzy
+                GROUP_CONCAT(DISTINCT a.imie_nazwisko) as autorzy,
+                COALESCE(AVG(s.ocena), 0) as srednia_ocena,
+                COUNT(DISTINCT CASE WHEN s.ocena IS NOT NULL THEN s.uzytkownik_id END) as liczba_ocen
             FROM ksiazki k
                      LEFT JOIN wydawnictwa w ON k.wydawnictwo_id = w.id
                      LEFT JOIN ksiazka_autorzy ka ON k.id = ka.ksiazka_id
                      LEFT JOIN autorzy a ON ka.autor_id = a.id
+                     LEFT JOIN statusy_czytania s ON k.id = s.ksiazka_id AND s.ocena IS NOT NULL
             WHERE k.id = ?
             GROUP BY k.id, w.nazwa
         `, [bookId]);
@@ -147,6 +158,8 @@ router.get('/:id', authenticateToken, async (req, res) => {
             recenzja: status[0]?.recenzja || null,
             data_rozpoczecia: status[0]?.data_rozpoczecia || null,
             data_zakonczenia: status[0]?.data_zakonczenia || null,
+            srednia_ocena: parseFloat(book.srednia_ocena).toFixed(1),
+            liczba_ocen: book.liczba_ocen,
             notatki: notes || [],
             statystyki: {
                 liczba_notatek: notes.length,
@@ -164,7 +177,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Aktualizuj status czytania
+// Aktualizuj status czytania z oceną
 router.post('/:id/status', authenticateToken, async (req, res) => {
     try {
         const { status, aktualna_strona, ocena, recenzja } = req.body;
@@ -230,14 +243,130 @@ router.post('/:id/status', authenticateToken, async (req, res) => {
             );
         }
 
+        // Pobierz zaktualizowane średnie oceny
+        const [ratingStats] = await db.promisePool.execute(`
+            SELECT 
+                COALESCE(AVG(ocena), 0) as srednia_ocena,
+                COUNT(DISTINCT CASE WHEN ocena IS NOT NULL THEN uzytkownik_id END) as liczba_ocen
+            FROM statusy_czytania 
+            WHERE ksiazka_id = ? AND ocena IS NOT NULL
+        `, [bookId]);
+
         res.json({
             message: 'Status zaktualizowany pomyślnie',
             status: finalStatus,
-            aktualna_strona: finalAktualnaStrona
+            aktualna_strona: finalAktualnaStrona,
+            ocena: finalOcena,
+            srednia_ocena: parseFloat(ratingStats[0]?.srednia_ocena || 0).toFixed(1),
+            liczba_ocen: ratingStats[0]?.liczba_ocen || 0
         });
 
     } catch (error) {
         console.error('Update status error:', error);
+        res.status(500).json({ message: 'Błąd serwera', error: error.message });
+    }
+});
+
+// Nowy endpoint do aktualizacji tylko oceny
+router.post('/:id/rating', authenticateToken, async (req, res) => {
+    try {
+        const { ocena, recenzja } = req.body;
+        const bookId = req.params.id;
+        const userId = req.user.userId;
+
+        if (!ocena || ocena < 0 || ocena > 5) {
+            return res.status(400).json({ message: 'Ocena musi być w zakresie 0-5' });
+        }
+
+        const [existingStatus] = await db.promisePool.execute(
+            'SELECT * FROM statusy_czytania WHERE uzytkownik_id = ? AND ksiazka_id = ?',
+            [userId, bookId]
+        );
+
+        if (existingStatus.length > 0) {
+            await db.promisePool.execute(
+                `UPDATE statusy_czytania 
+                 SET ocena = ?, recenzja = ?, updated_at = CURRENT_TIMESTAMP
+                 WHERE uzytkownik_id = ? AND ksiazka_id = ?`,
+                [ocena, recenzja || null, userId, bookId]
+            );
+        } else {
+            await db.promisePool.execute(
+                'INSERT INTO statusy_czytania (uzytkownik_id, ksiazka_id, ocena, recenzja, status) VALUES (?, ?, ?, ?, ?)',
+                [userId, bookId, ocena, recenzja || null, 'przeczytana']
+            );
+        }
+
+        // Pobierz zaktualizowane średnie oceny
+        const [ratingStats] = await db.promisePool.execute(`
+            SELECT 
+                COALESCE(AVG(ocena), 0) as srednia_ocena,
+                COUNT(DISTINCT CASE WHEN ocena IS NOT NULL THEN uzytkownik_id END) as liczba_ocen
+            FROM statusy_czytania 
+            WHERE ksiazka_id = ? AND ocena IS NOT NULL
+        `, [bookId]);
+
+        res.json({
+            message: 'Ocena została zapisana',
+            ocena: ocena,
+            srednia_ocena: parseFloat(ratingStats[0]?.srednia_ocena || 0).toFixed(1),
+            liczba_ocen: ratingStats[0]?.liczba_ocen || 0
+        });
+
+    } catch (error) {
+        console.error('Update rating error:', error);
+        res.status(500).json({ message: 'Błąd serwera', error: error.message });
+    }
+});
+
+// Pobierz oceny książki
+router.get('/:id/ratings', authenticateToken, async (req, res) => {
+    try {
+        const bookId = req.params.id;
+
+        const [ratings] = await db.promisePool.execute(`
+            SELECT 
+                s.ocena,
+                s.recenzja,
+                s.updated_at,
+                u.nazwa_wyswietlana,
+                u.url_avatara
+            FROM statusy_czytania s
+            JOIN uzytkownicy u ON s.uzytkownik_id = u.id
+            WHERE s.ksiazka_id = ? AND s.ocena IS NOT NULL
+            ORDER BY s.updated_at DESC
+        `, [bookId]);
+
+        const [stats] = await db.promisePool.execute(`
+            SELECT 
+                COALESCE(AVG(ocena), 0) as srednia_ocena,
+                COUNT(DISTINCT CASE WHEN ocena IS NOT NULL THEN uzytkownik_id END) as liczba_ocen,
+                COUNT(CASE WHEN ocena = 1 THEN 1 END) as ocena_1,
+                COUNT(CASE WHEN ocena = 2 THEN 1 END) as ocena_2,
+                COUNT(CASE WHEN ocena = 3 THEN 1 END) as ocena_3,
+                COUNT(CASE WHEN ocena = 4 THEN 1 END) as ocena_4,
+                COUNT(CASE WHEN ocena = 5 THEN 1 END) as ocena_5
+            FROM statusy_czytania 
+            WHERE ksiazka_id = ? AND ocena IS NOT NULL
+        `, [bookId]);
+
+        res.json({
+            ratings: ratings,
+            stats: {
+                srednia_ocena: parseFloat(stats[0]?.srednia_ocena || 0).toFixed(1),
+                liczba_ocen: stats[0]?.liczba_ocen || 0,
+                distribution: {
+                    '1': stats[0]?.ocena_1 || 0,
+                    '2': stats[0]?.ocena_2 || 0,
+                    '3': stats[0]?.ocena_3 || 0,
+                    '4': stats[0]?.ocena_4 || 0,
+                    '5': stats[0]?.ocena_5 || 0
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('Get ratings error:', error);
         res.status(500).json({ message: 'Błąd serwera', error: error.message });
     }
 });
@@ -322,19 +451,16 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 
         console.log(`🗑️ Removing book ${bookId} from user ${userId}'s library`);
 
-        // Usuń tylko status czytania (książka pozostaje w bazie)
         await db.promisePool.execute(
             'DELETE FROM statusy_czytania WHERE uzytkownik_id = ? AND ksiazka_id = ?',
             [userId, bookId]
         );
 
-        // Usuń notatki użytkownika dla tej książki
         await db.promisePool.execute(
             'DELETE FROM zakladki WHERE uzytkownik_id = ? AND ksiazka_id = ?',
             [userId, bookId]
         );
 
-        // Usuń z półek użytkownika
         await db.promisePool.execute(
             'DELETE FROM ksiazki_na_polkach WHERE ksiazka_id = ? AND polka_id IN (SELECT id FROM polki WHERE uzytkownik_id = ?)',
             [bookId, userId]
@@ -375,6 +501,14 @@ router.get('/:id/stats', authenticateToken, async (req, res) => {
             [userId, bookId]
         );
 
+        const [ratingStats] = await db.promisePool.execute(`
+            SELECT 
+                COALESCE(AVG(ocena), 0) as srednia_ocena,
+                COUNT(DISTINCT CASE WHEN ocena IS NOT NULL THEN uzytkownik_id END) as liczba_ocen
+            FROM statusy_czytania 
+            WHERE ksiazka_id = ? AND ocena IS NOT NULL
+        `, [bookId]);
+
         const pages = book[0]?.liczba_stron || 0;
         const currentPage = status[0]?.aktualna_strona || 0;
         const progress = pages > 0 ? Math.round((currentPage / pages) * 100) : 0;
@@ -386,6 +520,8 @@ router.get('/:id/stats', authenticateToken, async (req, res) => {
             notesCount: notesCount[0]?.count || 0,
             status: status[0]?.status || 'nie_przeczytana',
             rating: status[0]?.ocena || null,
+            averageRating: parseFloat(ratingStats[0]?.srednia_ocena || 0).toFixed(1),
+            totalRatings: ratingStats[0]?.liczba_ocen || 0,
             startDate: status[0]?.data_rozpoczecia,
             endDate: status[0]?.data_zakonczenia
         });

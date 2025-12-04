@@ -168,12 +168,47 @@ const ExpandButton = styled.button`
 
 const BookMeta = styled.div`
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: ${props => props.theme.spacing.xs};
   margin-bottom: ${props => props.theme.spacing.md};
   font-size: 0.8rem;
   color: ${props => props.theme.colors.textSecondary};
   flex-shrink: 0;
+`;
+
+const MetaRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: ${props => props.theme.spacing.sm};
+  flex-wrap: wrap;
+`;
+
+const AverageRating = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: ${props => props.theme.colors.success};
+  font-size: 0.8rem;
+  background: ${props => props.theme.colors.surfaceLight};
+  padding: 2px 6px;
+  border-radius: ${props => props.theme.borderRadius.sm};
+  border: 1px solid ${props => props.theme.colors.border};
+`;
+
+const RatingCount = styled.span`
+  font-size: 0.7rem;
+  color: ${props => props.theme.colors.textSecondary};
+  margin-left: 2px;
+`;
+
+const UserRating = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: ${props => props.theme.colors.warning};
+  font-size: 0.8rem;
+  margin-top: 2px;
 `;
 
 const ActionButtons = styled.div`
@@ -331,24 +366,18 @@ const formatDate = (dateString: string): string => {
     if (!dateString) return 'Brak daty';
 
     try {
-        // Próbuj sparsować datę
         const date = new Date(dateString);
-
-        // Jeśli data jest nieprawidłowa, zwróć oryginalny string bez czasu
         if (isNaN(date.getTime())) {
-            // Spróbuj wyciągnąć tylko część daty (bez czasu)
             const dateOnly = dateString.split('T')[0];
             return dateOnly || dateString;
         }
-
-        // Formatuj datę jako YYYY-MM-DD
         return date.toISOString().split('T')[0];
     } catch (error) {
-        // W przypadku błędu, zwróć oryginalny string bez czasu
         return dateString.split('T')[0] || dateString;
     }
 };
 
+// ===== INTERFACES =====
 interface SearchResult {
     source: 'google' | 'local';
     googleBooksId?: string;
@@ -367,6 +396,8 @@ interface SearchResult {
     previewLink?: string;
     rating?: number | null;
     ratingsCount?: number;
+    srednia_ocena?: string | number | null;
+    liczba_ocen?: number;
     readingStatus?: {
         status: string;
         ocena: number | null;
@@ -389,7 +420,7 @@ const SearchPage: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [addingBooks, setAddingBooks] = useState<Set<string>>(new Set());
-    const [removingBooks, setRemovingBooks] = useState<Set<string>>(new Set()); // Zmienione na Set
+    const [removingBooks, setRemovingBooks] = useState<Set<string>>(new Set());
     const [totalResults, setTotalResults] = useState(0);
     const [currentPage, setCurrentPage] = useState(0);
     const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -429,7 +460,7 @@ const SearchPage: React.FC = () => {
         if (!searchQuery.trim()) {
             setResults([]);
             setTotalResults(0);
-            setExpandedDescriptions(new Set()); // Wyczyść rozwinięte opisy
+            setExpandedDescriptions(new Set());
             return;
         }
 
@@ -451,7 +482,6 @@ const SearchPage: React.FC = () => {
             console.log('📦 Search response:', response.data);
 
             if (response.data.success) {
-                // Przetwórz wyniki - upewnij się, że wszystkie pola są poprawnie zdefiniowane
                 const rawBooks = response.data.books || [];
 
                 // Filtruj duplikaty - preferuj książki z biblioteki użytkownika
@@ -459,10 +489,9 @@ const SearchPage: React.FC = () => {
 
                 rawBooks.forEach((book: any) => {
                     const key = book.existingBookId
-                        ? `id-${book.existingBookId}` // Użyj ID z bazy jeśli istnieje
-                        : `isbn-${book.isbn || ''}-${book.tytul || ''}`; // Użyj kombinacji ISBN i tytułu
+                        ? `id-${book.existingBookId}`
+                        : `isbn-${book.isbn || ''}-${book.tytul || ''}`;
 
-                    // Jeśli książka już jest w mapie, sprawdź którą preferować
                     if (uniqueBooksMap.has(key)) {
                         const existingBook = uniqueBooksMap.get(key)!;
 
@@ -486,13 +515,15 @@ const SearchPage: React.FC = () => {
                                 previewLink: book.previewLink || '',
                                 rating: book.rating || null,
                                 ratingsCount: book.ratingsCount || 0,
+                                srednia_ocena: book.srednia_ocena || null,
+                                liczba_ocen: book.liczba_ocen || 0,
                                 readingStatus: book.readingStatus || undefined
                             });
                         }
                         // Preferuj książkę z istniejącym ID (z naszej bazy)
                         else if (book.existingBookId && !existingBook.existingBookId) {
                             uniqueBooksMap.set(key, {
-                                source: 'local', // Traktuj jako lokalną jeśli ma ID z naszej bazy
+                                source: 'local',
                                 googleBooksId: book.googleBooksId || undefined,
                                 existingBookId: book.existingBookId || null,
                                 isInUserLibrary: Boolean(book.isInUserLibrary),
@@ -509,6 +540,8 @@ const SearchPage: React.FC = () => {
                                 previewLink: book.previewLink || '',
                                 rating: book.rating || null,
                                 ratingsCount: book.ratingsCount || 0,
+                                srednia_ocena: book.srednia_ocena || null,
+                                liczba_ocen: book.liczba_ocen || 0,
                                 readingStatus: book.readingStatus || undefined
                             });
                         }
@@ -532,6 +565,8 @@ const SearchPage: React.FC = () => {
                             previewLink: book.previewLink || '',
                             rating: book.rating || null,
                             ratingsCount: book.ratingsCount || 0,
+                            srednia_ocena: book.srednia_ocena || null,
+                            liczba_ocen: book.liczba_ocen || 0,
                             readingStatus: book.readingStatus || undefined
                         });
                     }
@@ -545,7 +580,7 @@ const SearchPage: React.FC = () => {
                 setResults(processedResults);
                 setTotalResults(response.data.totalResults || 0);
                 setCurrentPage(page);
-                setExpandedDescriptions(new Set()); // Wyczyść rozwinięte opisy dla nowego wyszukiwania
+                setExpandedDescriptions(new Set());
             } else {
                 setError(response.data.message || 'Wystąpił błąd podczas wyszukiwania');
                 setResults([]);
@@ -612,12 +647,10 @@ const SearchPage: React.FC = () => {
             return;
         }
 
-        // Użyj bezpiecznego klucza dla dodawanej książki
         const bookKey = book.googleBooksId || `local-${book.existingBookId || 'temp'}`;
         setAddingBooks(prev => new Set(prev).add(bookKey));
 
         try {
-            // Przygotuj dane
             const bookData = {
                 title: book.tytul?.trim() || '',
                 authors: Array.isArray(book.autorzy) ? book.autorzy : [book.autorzy || 'Autor nieznany'],
@@ -635,7 +668,6 @@ const SearchPage: React.FC = () => {
 
             console.log('📤 Sending book data to server:', bookData);
 
-            // Wyślij żądanie
             const response = await api.post('/search/add-book', bookData, {
                 timeout: 30000,
                 headers: {
@@ -646,7 +678,6 @@ const SearchPage: React.FC = () => {
             console.log('📨 Server response:', response.data);
 
             if (response.data.success) {
-                // Odśwież wyniki wyszukiwania - usuwając duplikaty
                 setResults(prev => {
                     const updatedResults = prev.map(b => {
                         const isSameBook = (b.googleBooksId && b.googleBooksId === book.googleBooksId) ||
@@ -659,14 +690,13 @@ const SearchPage: React.FC = () => {
                                 ...b,
                                 isInUserLibrary: true,
                                 existingBookId: response.data.bookId || b.existingBookId,
-                                source: 'local' as const // Użyj 'as const' dla TypeScript
+                                source: 'local' as const
                             };
                         }
                         return b;
                     });
 
-                    // Filtruj duplikaty po aktualizacji
-                    return filterDuplicates(updatedResults);
+                    return updatedResults;
                 });
 
                 alert('✅ ' + response.data.message);
@@ -693,7 +723,6 @@ const SearchPage: React.FC = () => {
 
             alert('❌ ' + errorMessage);
         } finally {
-            // Zawsze wyczyść stan dodawania
             setAddingBooks(prev => {
                 const newSet = new Set(prev);
                 newSet.delete(bookKey);
@@ -717,7 +746,6 @@ const SearchPage: React.FC = () => {
             return;
         }
 
-        // Utwórz unikalny klucz dla książki
         const bookKey = book.existingBookId.toString();
         setRemovingBooks(prev => new Set(prev).add(bookKey));
 
@@ -727,13 +755,11 @@ const SearchPage: React.FC = () => {
                 title: book.tytul
             });
 
-            // Użyj endpointu /books/:id zamiast /search/books/:bookId/remove-from-library
             const response = await api.delete(`/books/${book.existingBookId}`);
 
             console.log('📨 Remove response:', response.data);
 
             if (response.data.success) {
-                // Odśwież wyniki wyszukiwania
                 setResults(prev => {
                     const updatedResults = prev.map(b => {
                         if (b.existingBookId === book.existingBookId) {
@@ -745,8 +771,7 @@ const SearchPage: React.FC = () => {
                         return b;
                     });
 
-                    // Filtruj duplikaty po aktualizacji
-                    return filterDuplicates(updatedResults);
+                    return updatedResults;
                 });
 
                 alert('✅ ' + response.data.message);
@@ -771,7 +796,6 @@ const SearchPage: React.FC = () => {
 
             alert('❌ ' + errorMessage);
         } finally {
-            // Wyczyść stan usuwania
             setRemovingBooks(prev => {
                 const newSet = new Set(prev);
                 newSet.delete(bookKey);
@@ -793,51 +817,41 @@ const SearchPage: React.FC = () => {
         return addingBooks.has(bookKey);
     };
 
-    // Funkcja sprawdzająca czy książka jest w trakcie usuwania
     const isRemovingBook = (book: SearchResult) => {
         const bookKey = book.existingBookId?.toString() || '';
         return removingBooks.has(bookKey);
     };
 
-    // Funkcja sprawdzająca czy opis jest zbyt długi i wymaga przycisku "rozwiń"
     const isDescriptionLong = (description: string) => {
         return description.length > 150;
     };
 
-    // Funkcja do skracania opisu
     const getShortDescription = (description: string) => {
         if (description.length <= 150) return description;
         return description.substring(0, 150) + '...';
     };
 
-    // Funkcja do filtrowania duplikatów
-    const filterDuplicates = (books: SearchResult[]): SearchResult[] => {
-        const uniqueBooksMap = new Map<string, SearchResult>();
+    // Funkcja do formatowania średniej oceny
+    const formatAverageRating = (rating: string | number | null | undefined): string => {
+        if (!rating) return '0.0';
 
-        books.forEach((book) => {
-            const key = book.existingBookId
-                ? `id-${book.existingBookId}` // Użyj ID z bazy jeśli istnieje
-                : `isbn-${book.isbn || ''}-${book.tytul || ''}`; // Użyj kombinacji ISBN i tytułu
+        if (typeof rating === 'string') {
+            const num = parseFloat(rating);
+            return isNaN(num) ? '0.0' : num.toFixed(1);
+        } else if (typeof rating === 'number') {
+            return rating.toFixed(1);
+        }
 
-            // Jeśli książka już jest w mapie, sprawdź którą preferować
-            if (uniqueBooksMap.has(key)) {
-                const existingBook = uniqueBooksMap.get(key)!;
+        return '0.0';
+    };
 
-                // Preferuj książkę która jest już w bibliotece użytkownika
-                if (book.isInUserLibrary && !existingBook.isInUserLibrary) {
-                    uniqueBooksMap.set(key, book);
-                }
-                // Preferuj książkę z istniejącym ID (z naszej bazy)
-                else if (book.existingBookId && !existingBook.existingBookId) {
-                    uniqueBooksMap.set(key, book);
-                }
-            } else {
-                // Dodaj nową książkę do mapy
-                uniqueBooksMap.set(key, book);
-            }
-        });
-
-        return Array.from(uniqueBooksMap.values());
+    // Sprawdź czy książka ma ocenę
+    const hasRating = (book: SearchResult): boolean => {
+        if (book.srednia_ocena) {
+            const rating = parseFloat(String(book.srednia_ocena));
+            return !isNaN(rating) && rating > 0;
+        }
+        return false;
     };
 
     return (
@@ -957,9 +971,29 @@ const SearchPage: React.FC = () => {
                                         </DescriptionContainer>
 
                                         <BookMeta>
-                      <span>
-                        {book.liczba_stron ? `${book.liczba_stron} str.` : 'Brak danych'}
-                      </span>
+                                            <MetaRow>
+                                                <span>
+                                                    {book.liczba_stron ? `${book.liczba_stron} str.` : 'Brak danych'}
+                                                </span>
+
+                                                {/* ŚREDNIA OCENA Z BAZY/GOOGLE */}
+                                                {hasRating(book) && (
+                                                    <AverageRating>
+                                                        <Icon name="FiStar" size={12} />
+                                                        <span>{formatAverageRating(book.srednia_ocena)}</span>
+                                                        <RatingCount>({book.liczba_ocen || 0})</RatingCount>
+                                                    </AverageRating>
+                                                )}
+                                            </MetaRow>
+
+                                            {/* OCENA UŻYTKOWNIKA JEŚLI KSIĄŻKA JEST W BIBLIOTECE */}
+                                            {book.isInUserLibrary && book.readingStatus?.ocena && (
+                                                <UserRating>
+                                                    <Icon name="FiStar" size={12} />
+                                                    <span>Twoja ocena: {book.readingStatus.ocena}/5</span>
+                                                </UserRating>
+                                            )}
+
                                             <span>{formatDate(book.data_wydania)}</span>
                                         </BookMeta>
 
