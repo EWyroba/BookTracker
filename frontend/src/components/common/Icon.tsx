@@ -39,6 +39,7 @@ export type IconName =
     | 'FiUserCheck'
     | 'FiCheckCircle'
     | 'FiAlertCircle'
+    | 'FiMenu'
 
 
 

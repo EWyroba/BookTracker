@@ -110,7 +110,7 @@ const SectionLink = styled(Link)`
 
 const BooksGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: ${props => props.theme.spacing.lg};
 `;
 
@@ -129,7 +129,7 @@ const DashboardBookCard = styled.div`
 
 const BookCover = styled.img`
   width: 100%;
-  height: 240px;
+  height: 100px;
   object-fit: cover;
   background: ${props => props.theme.colors.surfaceLight};
 `;

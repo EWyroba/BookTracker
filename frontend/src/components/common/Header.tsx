@@ -6,9 +6,8 @@ import Icon, { IconName } from './Icon';
 
 interface NavLinkProps {
     $isActive: boolean;
+    $hideTextOnMobile?: boolean;
 }
-
-// Usuń interfejs DropdownMenuProps, ponieważ nie będzie już potrzebny
 
 const HeaderContainer = styled.header`
   background: ${props => props.theme.colors.surface};
@@ -23,6 +22,7 @@ const Nav = styled.nav`
   align-items: center;
   justify-content: space-between;
   padding: ${props => props.theme.spacing.md} 0;
+  position: relative;
 `;
 
 const Logo = styled(Link)`
@@ -33,15 +33,58 @@ const Logo = styled(Link)`
   align-items: center;
   gap: ${props => props.theme.spacing.sm};
   text-decoration: none;
+  z-index: 1002;
+
+  @media (max-width: ${props => props.theme.breakpoints.mobile}) {
+    font-size: 1.25rem;
+
+    span {
+      display: block;
+    }
+  }
 `;
 
-const NavLinks = styled.div`
+const MobileMenuButton = styled.button`
+  display: none;
+  background: none;
+  border: none;
+  color: ${props => props.theme.colors.text};
+  cursor: pointer;
+  padding: ${props => props.theme.spacing.sm};
+  z-index: 1002;
+
+  @media (max-width: ${props => props.theme.breakpoints.tablet}) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+`;
+
+const NavLinks = styled.div<{ $isOpen: boolean }>`
   display: flex;
   align-items: center;
   gap: ${props => props.theme.spacing.xl};
 
-  @media (max-width: ${props => props.theme.breakpoints.mobile}) {
+  @media (max-width: ${props => props.theme.breakpoints.tablet}) {
+    position: fixed;
+    top: 0;
+    right: ${props => props.$isOpen ? '0' : '-100%'};
+    width: 280px;
+    height: 100vh;
+    background: ${props => props.theme.colors.surface};
+    border-left: 1px solid ${props => props.theme.colors.border};
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 80px ${props => props.theme.spacing.xl} ${props => props.theme.spacing.xl};
     gap: ${props => props.theme.spacing.lg};
+    transition: right 0.3s ease;
+    z-index: 1001;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.2);
+  }
+
+  @media (max-width: ${props => props.theme.breakpoints.mobile}) {
+    width: 250px;
+    padding: 70px ${props => props.theme.spacing.lg} ${props => props.theme.spacing.lg};
   }
 `;
 
@@ -57,14 +100,36 @@ const NavLink = styled(Link)<NavLinkProps>`
   &:hover {
     color: ${props => props.theme.colors.primary};
   }
+
+  @media (max-width: ${props => props.theme.breakpoints.tablet}) {
+    font-size: 1.1rem;
+    width: 100%;
+    padding: ${props => props.theme.spacing.sm} 0;
+
+    span {
+      display: block !important;
+    }
+  }
+
+  @media (max-width: ${props => props.theme.breakpoints.mobile}) {
+    font-size: 1rem;
+
+    span {
+      display: ${props => props.$hideTextOnMobile ? 'none' : 'block'};
+    }
+  }
 `;
 
 const UserMenu = styled.div`
   position: relative;
+  z-index: 1002;
 
-  /* Rozwijanie menu po hover */
   &:hover > div {
     display: block;
+  }
+
+  @media (max-width: ${props => props.theme.breakpoints.tablet}) {
+    display: none; /* Ukryj menu użytkownika na tabletach i mobile */
   }
 `;
 
@@ -83,20 +148,6 @@ const UserButton = styled.button`
   &:hover {
     background: ${props => props.theme.colors.surfaceLight};
   }
-`;
-
-const DropdownMenu = styled.div`
-  position: absolute;
-  top: 100%;
-  right: 0;
-  background: ${props => props.theme.colors.surface};
-  border: 1px solid ${props => props.theme.colors.border};
-  border-radius: ${props => props.theme.borderRadius.md};
-  padding: ${props => props.theme.spacing.sm};
-  min-width: 200px;
-  display: none; /* Domyślnie ukryte */
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 1001; /* Wyżej niż header */
 `;
 
 const DropdownItem = styled.button`
@@ -118,12 +169,44 @@ const DropdownItem = styled.button`
   }
 `;
 
+const DropdownMenu = styled.div`
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: ${props => props.theme.colors.surface};
+  border: 1px solid ${props => props.theme.colors.border};
+  border-radius: ${props => props.theme.borderRadius.md};
+  padding: ${props => props.theme.spacing.sm};
+  min-width: 200px;
+  display: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+`;
+
+const Overlay = styled.div<{ $isOpen: boolean }>`
+  display: ${props => props.$isOpen ? 'block' : 'none'};
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+`;
+
 const Header: React.FC = () => {
     const { user, logout, loading } = useAuth();
     const location = useLocation();
-    // Usuwamy stan isDropdownOpen, ponieważ teraz sterujemy przez hover
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-    // Linki które mają być widoczne TYLKO dla zalogowanych
+    const toggleMobileMenu = () => {
+        setIsMobileMenuOpen(!isMobileMenuOpen);
+    };
+
+    const closeMobileMenu = () => {
+        setIsMobileMenuOpen(false);
+    };
+
     const protectedNavItems: Array<{ path: string; icon: IconName; label: string }> = [
         { path: '/', icon: 'FiHome', label: 'Strona główna' },
         { path: '/books', icon: 'FiBook', label: 'Książki' },
@@ -131,7 +214,6 @@ const Header: React.FC = () => {
         { path: '/stats', icon: 'FiBarChart2', label: 'Statystyki' }
     ];
 
-    // Jeśli jeszcze ładuje, pokaż pusty header
     if (loading) {
         return (
             <HeaderContainer>
@@ -152,29 +234,70 @@ const Header: React.FC = () => {
         <HeaderContainer>
             <div className="container">
                 <Nav>
-                    <Logo to={user ? '/' : '/login'}>
+                    <Logo to={user ? '/' : '/login'} onClick={closeMobileMenu}>
                         <Icon name="FiBook" />
-                        BookTracker
+                        <span>BookTracker</span>
                     </Logo>
+
+                    {/* Przycisk menu mobilnego dla zalogowanych */}
+                    {user && (
+                        <MobileMenuButton onClick={toggleMobileMenu}>
+                            {isMobileMenuOpen ? (
+                                <Icon name="FiX" size={24} />
+                            ) : (
+                                <Icon name="FiMenu" size={24} />
+                            )}
+                        </MobileMenuButton>
+                    )}
+
+                    {/* Overlay dla menu mobilnego */}
+                    {user && <Overlay $isOpen={isMobileMenuOpen} onClick={closeMobileMenu} />}
 
                     {/* Linki tylko dla zalogowanych */}
                     {user && (
-                        <NavLinks>
+                        <NavLinks $isOpen={isMobileMenuOpen}>
                             {protectedNavItems.map(item => (
                                 <NavLink
                                     key={item.path}
                                     to={item.path}
                                     $isActive={location.pathname === item.path}
+                                    $hideTextOnMobile={true}
+                                    onClick={closeMobileMenu}
                                 >
                                     <Icon name={item.icon} />
                                     <span>{item.label}</span>
                                 </NavLink>
                             ))}
+
+                            {/* Linki menu użytkownika w wersji mobilnej */}
+                            <NavLink
+                                to="/profile"
+                                $isActive={location.pathname === '/profile'}
+                                $hideTextOnMobile={false}
+                                onClick={closeMobileMenu}
+                            >
+                                <Icon name="FiUser" />
+                                <span>Mój profil</span>
+                            </NavLink>
+
+                            <NavLink
+                                to="#"
+                                $isActive={false}
+                                $hideTextOnMobile={false}
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    closeMobileMenu();
+                                    logout();
+                                }}
+                            >
+                                <Icon name="FiLogOut" />
+                                <span>Wyloguj się</span>
+                            </NavLink>
                         </NavLinks>
                     )}
 
-                    {/* Menu użytkownika */}
-                    {user ? (
+                    {/* Menu użytkownika (wersja desktop) - widoczne tylko na dużych ekranach */}
+                    {user && (
                         <UserMenu>
                             <UserButton>
                                 <Icon name="FiUser" />
@@ -185,22 +308,32 @@ const Header: React.FC = () => {
                             <DropdownMenu>
                                 <DropdownItem as={Link} to="/profile">
                                     <Icon name="FiUser" />
-                                    Mój profil
+                                    <span>Mój profil</span>
                                 </DropdownItem>
                                 <DropdownItem onClick={logout}>
                                     <Icon name="FiLogOut" />
-                                    Wyloguj się
+                                    <span>Wyloguj się</span>
                                 </DropdownItem>
                             </DropdownMenu>
                         </UserMenu>
-                    ) : (
-                        // Jeśli NIE zalogowany, pokaż przyciski logowania/rejestracji
-                        <NavLinks>
-                            <NavLink to="/login" $isActive={location.pathname === '/login'}>
+                    )}
+
+                    {/* Jeśli NIE zalogowany, pokaż przyciski logowania/rejestracji */}
+                    {!user && (
+                        <NavLinks $isOpen={false}>
+                            <NavLink
+                                to="/login"
+                                $isActive={location.pathname === '/login'}
+                                $hideTextOnMobile={false}
+                            >
                                 <Icon name="FiLogIn" />
                                 <span>Zaloguj</span>
                             </NavLink>
-                            <NavLink to="/register" $isActive={location.pathname === '/register'}>
+                            <NavLink
+                                to="/register"
+                                $isActive={location.pathname === '/register'}
+                                $hideTextOnMobile={false}
+                            >
                                 <Icon name="FiUserPlus" />
                                 <span>Zarejestruj</span>
                             </NavLink>
